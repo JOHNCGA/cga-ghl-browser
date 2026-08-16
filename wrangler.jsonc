@@ -1,0 +1,9 @@
+{
+  "name": "cga-ghl-browser",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "browser": {
+    "binding": "BROWSER"
+  }
+}
