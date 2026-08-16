@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import * as puppeteer from "@cloudflare/puppeteer";
+import puppeteer from "@cloudflare/puppeteer";
 
 export default {
   async fetch(request, env) {
@@ -9,12 +9,11 @@ export default {
 };
 
 export class BrowserManager extends DurableObject {
-  browser;
-  storage;
-
   constructor(state, env) {
     super(state, env);
     this.storage = state.storage;
+    this.env = env;
+    this.browser = null;
   }
 
   async ensureBrowser() {
@@ -28,56 +27,130 @@ export class BrowserManager extends DurableObject {
   }
 
   async keepAlive() {
-    const currentAlarm = await this.storage.getAlarm();
+    const alarm = await this.storage.getAlarm();
 
-    if (currentAlarm == null) {
+    if (alarm === null) {
       await this.storage.setAlarm(Date.now() + 5 * 60 * 1000);
     }
+  }
+
+  async getHighLevelPage(browser) {
+    let pages = await browser.pages();
+
+    let page = pages.find((p) =>
+      p.url().includes("app.gohighlevel.com")
+    );
+
+    if (!page) {
+      page = pages[0] || await browser.newPage();
+    }
+
+    if (!page.url() || page.url() === "about:blank") {
+      await page.goto("https://app.gohighlevel.com", {
+        waitUntil: "domcontentloaded",
+        timeout: 30000
+      });
+    }
+
+    return page;
+  }
+
+  async inspectHighLevel(page) {
+    await page.waitForSelector("body", { timeout: 15000 });
+
+    // Give the HighLevel SPA a moment to finish rendering.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    return await page.evaluate(() => {
+      const clean = (value) =>
+        String(value || "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const isVisible = (el) => {
+        const style = window.getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      };
+
+      const items = Array.from(
+        document.querySelectorAll(
+          'a, button, [role="button"], [role="link"]'
+        )
+      )
+        .filter(isVisible)
+        .map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          text: clean(
+            el.innerText ||
+            el.textContent ||
+            el.getAttribute("aria-label")
+          ),
+          href:
+            el instanceof HTMLAnchorElement
+              ? el.href
+              : "",
+          ariaLabel: clean(
+            el.getAttribute("aria-label")
+          )
+        }))
+        .filter((item) =>
+          item.text ||
+          item.href ||
+          item.ariaLabel
+        );
+
+      const relevant = items.filter((item) => {
+        const haystack = (
+          item.text +
+          " " +
+          item.href +
+          " " +
+          item.ariaLabel
+        ).toLowerCase();
+
+        return [
+          "site",
+          "website",
+          "funnel",
+          "page",
+          "domain"
+        ].some((word) => haystack.includes(word));
+      });
+
+      return {
+        pageTitle: document.title,
+        pageUrl: window.location.href,
+
+        relevantNavigation: relevant.slice(0, 100),
+
+        visibleNavigation: items.slice(0, 150)
+      };
+    });
   }
 
   async fetch(request) {
     try {
       const browser = await this.ensureBrowser();
-
-      let pages = await browser.pages();
-
-      let page =
-        pages.find((p) =>
-          p.url().includes("app.gohighlevel.com")
-        ) || pages[0];
-
-      if (!page) {
-        page = await browser.newPage();
-      }
-
-      if (
-        !page.url() ||
-        page.url() === "about:blank"
-      ) {
-        await page.goto("https://app.gohighlevel.com", {
-          waitUntil: "domcontentloaded",
-          timeout: 30000
-        });
-      }
+      const page = await this.getHighLevelPage(browser);
 
       await this.keepAlive();
 
-      pages = await browser.pages();
-
-      const pageInfo = [];
-
-      for (const p of pages) {
-        pageInfo.push({
-          title: await p.title().catch(() => ""),
-          url: p.url()
-        });
-      }
+      const inspection = await this.inspectHighLevel(page);
 
       return Response.json({
-        status: "browser-running",
-        message:
-          "Persistent CGA HighLevel browser session is running.",
-        pages: pageInfo
+        status: "inspection-success",
+        authenticated:
+          inspection.pageUrl.includes(
+            "/v2/location/"
+          ),
+        highLevel: inspection
       });
 
     } catch (error) {
@@ -96,8 +169,10 @@ export class BrowserManager extends DurableObject {
 
   async alarm() {
     try {
-      if (this.browser && this.browser.isConnected()) {
-        // Sending a browser command prevents Browser Run becoming idle.
+      if (
+        this.browser &&
+        this.browser.isConnected()
+      ) {
         await this.browser.version();
 
         await this.storage.setAlarm(
