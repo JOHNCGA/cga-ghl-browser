@@ -24,16 +24,15 @@ function controlPage() {
 <head>
   <meta charset="utf-8">
   <title>CGA HighLevel Browser</title>
-
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 900px;
+      max-width: 950px;
       margin: 40px auto;
       padding: 0 20px;
     }
 
-    input {
+    input, textarea {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
@@ -66,12 +65,7 @@ function controlPage() {
 <h1>CGA HighLevel Browser</h1>
 
 <label><strong>Browser Admin Key</strong></label>
-
-<input
-  id="key"
-  type="password"
-  placeholder="Enter BROWSER_ADMIN_KEY"
-/>
+<input id="key" type="password" placeholder="Enter BROWSER_ADMIN_KEY">
 
 <section>
   <h3>Browser</h3>
@@ -92,10 +86,7 @@ function controlPage() {
     List Funnels
   </button>
 
-  <input
-    id="funnelName"
-    placeholder="Funnel name"
-  >
+  <input id="funnelName" placeholder="Funnel name">
 
   <button onclick="runWithBody('/api/funnel/open', {
     name: document.getElementById('funnelName').value
@@ -111,10 +102,7 @@ function controlPage() {
 <section>
   <h3>Step</h3>
 
-  <input
-    id="stepName"
-    placeholder="Step/page name"
-  >
+  <input id="stepName" placeholder="Step/page name">
 
   <button onclick="runWithBody('/api/funnel/step/inspect', {
     name: document.getElementById('stepName').value
@@ -139,6 +127,37 @@ function controlPage() {
   </button>
 </section>
 
+<section>
+  <h3>Edit Builder Text</h3>
+
+  <label>CSS selector</label>
+  <textarea id="editSelector"></textarea>
+
+  <label>Expected current text</label>
+  <textarea id="expectedText"></textarea>
+
+  <label>New text</label>
+  <textarea id="newText"></textarea>
+
+  <button onclick="runWithBody('/api/builder/edit-text', {
+    selector: document.getElementById('editSelector').value,
+    expectedText: document.getElementById('expectedText').value,
+    newText: document.getElementById('newText').value
+  })">
+    Edit Text
+  </button>
+
+  <button onclick="run('/api/builder/save')">
+    Save Builder
+  </button>
+
+  <button onclick="runWithBody('/api/builder/publish', {
+    confirm: true
+  })">
+    Publish Builder
+  </button>
+</section>
+
 <pre id="result">Ready</pre>
 
 <script>
@@ -151,52 +170,31 @@ async function run(path) {
 }
 
 async function runWithBody(path, body) {
-  const result =
-    document.getElementById("result");
-
-  const key =
-    adminKey();
+  const result = document.getElementById("result");
+  const key = adminKey();
 
   if (!key) {
-    result.textContent =
-      "Enter your Browser Admin Key first.";
-
+    result.textContent = "Enter your Browser Admin Key first.";
     return;
   }
 
-  result.textContent =
-    "Working...";
+  result.textContent = "Working...";
 
   try {
-    const response =
-      await fetch(path, {
-        method: "POST",
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "x-admin-key": key,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body || {})
+    });
 
-        headers: {
-          "x-admin-key": key,
-          "content-type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify(
-            body || {}
-          )
-      });
-
-    const data =
-      await response.json();
-
-    result.textContent =
-      JSON.stringify(
-        data,
-        null,
-        2
-      );
+    const data = await response.json();
+    result.textContent = JSON.stringify(data, null, 2);
 
   } catch (error) {
-    result.textContent =
-      String(error);
+    result.textContent = String(error);
   }
 }
 </script>
@@ -205,8 +203,7 @@ async function runWithBody(path, body) {
 </html>
 `, {
     headers: {
-      "content-type":
-        "text/html; charset=utf-8"
+      "content-type": "text/html; charset=utf-8"
     }
   });
 }
@@ -214,80 +211,37 @@ async function runWithBody(path, body) {
 
 export default {
   async fetch(request, env) {
-    const url =
-      new URL(request.url);
+    const url = new URL(request.url);
 
-    if (
-      url.pathname === "/"
-    ) {
+    if (url.pathname === "/") {
       return controlPage();
     }
 
-    if (
-      !url.pathname.startsWith(
-        "/api/"
-      )
-    ) {
-      return json(
-        {
-          error:
-            "Not found"
-        },
-        404
-      );
+    if (!url.pathname.startsWith("/api/")) {
+      return json({ error: "Not found" }, 404);
+    }
+
+    if (!env.BROWSER_ADMIN_KEY) {
+      return json({
+        error: "BROWSER_ADMIN_KEY is not configured."
+      }, 503);
     }
 
     if (
-      !env.BROWSER_ADMIN_KEY
-    ) {
-      return json(
-        {
-          error:
-            "BROWSER_ADMIN_KEY is not configured."
-        },
-        503
-      );
-    }
-
-    const suppliedKey =
-      request.headers.get(
-        "x-admin-key"
-      );
-
-    if (
-      suppliedKey !==
+      request.headers.get("x-admin-key") !==
       env.BROWSER_ADMIN_KEY
     ) {
-      return json(
-        {
-          error:
-            "Unauthorized"
-        },
-        401
-      );
+      return json({ error: "Unauthorized" }, 401);
     }
 
-    if (
-      request.method !== "POST"
-    ) {
-      return json(
-        {
-          error:
-            "Method not allowed"
-        },
-        405
-      );
+    if (request.method !== "POST") {
+      return json({ error: "Method not allowed" }, 405);
     }
 
     const object =
-      env.BROWSER_MANAGER
-        .getByName(
-          "cga-ghl"
-        );
+      env.BROWSER_MANAGER.getByName("cga-ghl");
 
-    return object.fetch(
-      request
-    );
+    return object.fetch(request);
   }
 };
 
@@ -297,24 +251,25 @@ export class BrowserManager extends DurableObject {
   constructor(state, env) {
     super(state, env);
 
-    this.storage =
-      state.storage;
-
-    this.env =
-      env;
-
-    this.browser =
-      null;
+    this.storage = state.storage;
+    this.env = env;
+    this.browser = null;
   }
 
 
   async body(request) {
     try {
       return await request.json();
-
     } catch {
       return {};
     }
+  }
+
+
+  clean(value) {
+    return String(value || "")
+      .replace(/\\s+/g, " ")
+      .trim();
   }
 
 
@@ -325,34 +280,25 @@ export class BrowserManager extends DurableObject {
     ) {
       try {
         await this.browser.close();
-
       } catch {}
     }
 
-    this.browser =
-      await puppeteer.launch(
-        this.env.BROWSER,
-        {
-          keep_alive:
-            600000
-        }
-      );
+    this.browser = await puppeteer.launch(
+      this.env.BROWSER,
+      {
+        keep_alive: 600000
+      }
+    );
 
-    const pages =
-      await this.browser.pages();
-
+    const pages = await this.browser.pages();
     const page =
-      pages[0] ||
-      await this.browser.newPage();
+      pages[0] || await this.browser.newPage();
 
     await page.goto(
       `${GHL_BASE}/`,
       {
-        waitUntil:
-          "domcontentloaded",
-
-        timeout:
-          30000
+        waitUntil: "domcontentloaded",
+        timeout: 30000
       }
     );
 
@@ -365,13 +311,9 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status:
-        "login-browser-ready",
-
+      status: "login-browser-ready",
       sessionId,
-
-      pageUrl:
-        page.url()
+      pageUrl: page.url()
     });
   }
 
@@ -394,11 +336,10 @@ export class BrowserManager extends DurableObject {
     }
 
     try {
-      this.browser =
-        await puppeteer.connect(
-          this.env.BROWSER,
-          sessionId
-        );
+      this.browser = await puppeteer.connect(
+        this.env.BROWSER,
+        sessionId
+      );
 
       return this.browser;
 
@@ -409,8 +350,7 @@ export class BrowserManager extends DurableObject {
 
 
   async highLevelPages(browser) {
-    const pages =
-      await browser.pages();
+    const pages = await browser.pages();
 
     return pages.filter(
       page =>
@@ -421,347 +361,246 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async chooseHighLevelPage(
-    browser
-  ) {
-    const pages =
-      await this.highLevelPages(
-        browser
-      );
-
-    if (!pages.length) {
-      return null;
-    }
-
-    const builder =
-      await this.findBuilderPage(
-        browser
-      );
-
-    if (builder) {
-      return builder.page;
-    }
-
-    const funnelDetail =
-      pages.find(
-        page => {
-          const url =
-            page.url();
-
-          return (
-            url.includes(
-              "/funnels-websites/"
-            ) &&
-            !url.endsWith(
-              "/funnels"
-            )
-          );
-        }
-      );
-
-    if (funnelDetail) {
-      return funnelDetail;
-    }
-
-    const funnels =
-      pages.find(
-        page =>
-          page.url().includes(
-            "/funnels-websites/funnels"
-          )
-      );
-
-    if (funnels) {
-      return funnels;
-    }
-
-    return pages[
-      pages.length - 1
-    ];
-  }
-
-
-  async waitForHighLevel(
-    page,
-    timeout = 30000
-  ) {
-    await page.waitForSelector(
-      "body",
-      {
-        timeout:
-          15000
-      }
-    );
-
+  async waitForHighLevel(page) {
     try {
-      await page.waitForFunction(
-        () => {
-          const text =
-            (
-              document.body
-                ?.innerText ||
-              ""
-            )
-              .replace(
-                /\\s+/g,
-                " "
-              )
-              .trim()
-              .toLowerCase();
-
-          return (
-            text.length > 20 &&
-            !text.includes(
-              "loading fresh data"
-            )
-          );
-        },
-        {
-          timeout,
-          polling:
-            500
-        }
+      await page.waitForSelector(
+        "body",
+        { timeout: 15000 }
       );
-
     } catch {}
 
-    await sleep(
-      1200
-    );
+    await sleep(1000);
   }
 
 
   async snapshot(page) {
-    return page.evaluate(
-      () => {
-        const clean =
-          value =>
-            String(
-              value || ""
-            )
-              .replace(
-                /\\s+/g,
-                " "
-              )
-              .trim();
+    return page.evaluate(() => ({
+      title: document.title,
+      url: location.href,
+      body:
+        String(
+          document.body?.innerText || ""
+        )
+          .replace(/\\s+/g, " ")
+          .trim()
+          .slice(0, 15000)
+    }));
+  }
 
-        return {
-          title:
-            document.title,
 
-          url:
-            location.href,
+  async findBuilderPage(browser) {
+    const pages = await browser.pages();
 
-          body:
-            clean(
-              document.body
-                ?.innerText ||
-              ""
-            ).slice(
-              0,
-              15000
-            )
-        };
+    for (const page of pages) {
+      const url =
+        page.url().toLowerCase();
+
+      if (
+        url.includes("/page-builder/")
+      ) {
+        return page;
       }
-    );
+
+      for (const frame of page.frames()) {
+        if (
+          frame.url().includes(
+            "page-builder.leadconnectorhq.com"
+          )
+        ) {
+          return page;
+        }
+      }
+    }
+
+    return null;
+  }
+
+
+  async getBuilderFrame(page) {
+    const frames = page.frames();
+
+    const exact =
+      frames.find(frame =>
+        frame.url().includes(
+          "page-builder.leadconnectorhq.com"
+        )
+      );
+
+    if (exact) {
+      return exact;
+    }
+
+    for (const frame of frames) {
+      if (frame === page.mainFrame()) {
+        continue;
+      }
+
+      try {
+        const textLength =
+          await frame.evaluate(() =>
+            (
+              document.body?.innerText || ""
+            ).trim().length
+          );
+
+        if (textLength > 500) {
+          return frame;
+        }
+
+      } catch {}
+    }
+
+    return null;
+  }
+
+
+  async getBuilderContext() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      throw new Error(
+        "HighLevel browser session is unavailable."
+      );
+    }
+
+    const page =
+      await this.findBuilderPage(browser);
+
+    if (!page) {
+      throw new Error(
+        "No verified HighLevel page builder is open."
+      );
+    }
+
+    const frame =
+      await this.getBuilderFrame(page);
+
+    if (!frame) {
+      throw new Error(
+        "HighLevel builder content frame was not found."
+      );
+    }
+
+    return {
+      browser,
+      page,
+      frame
+    };
   }
 
 
   async findExactClickPoint(
     page,
-    text,
-    preferPointer = true
+    text
   ) {
-    return page.evaluate(
-      ({
-        targetText,
-        preferPointer
-      }) => {
+    return page.evaluate(target => {
+      const clean = value =>
+        String(value || "")
+          .replace(/\\s+/g, " ")
+          .trim();
 
-        const clean =
-          value =>
-            String(
-              value || ""
-            )
-              .replace(
-                /\\s+/g,
-                " "
-              )
-              .trim();
+      const wanted =
+        clean(target).toLowerCase();
 
-        const wanted =
-          clean(
-            targetText
+      const candidates =
+        Array.from(
+          document.querySelectorAll(
+            'button,a,[role="button"],[role="link"],div,span,td'
           )
-            .toLowerCase();
+        )
+          .filter(el => {
+            const rect =
+              el.getBoundingClientRect();
 
-        const elements =
-          Array.from(
-            document.querySelectorAll(
-              'button, a, [role="button"], [role="link"], div, span, td'
-            )
-          );
-
-        const matches =
-          elements
-            .map(
-              element => {
-                const text =
-                  clean(
-                    element.innerText ||
-                    element.textContent ||
-                    element.getAttribute(
-                      "aria-label"
-                    )
-                  );
-
-                const rect =
-                  element
-                    .getBoundingClientRect();
-
-                const style =
-                  window
-                    .getComputedStyle(
-                      element
-                    );
-
-                return {
-                  element,
-
-                  text,
-
-                  tag:
-                    element.tagName
-                      .toLowerCase(),
-
-                  role:
-                    element.getAttribute(
-                      "role"
-                    ) || "",
-
-                  cursor:
-                    style.cursor,
-
-                  width:
-                    rect.width,
-
-                  height:
-                    rect.height
-                };
-              }
-            )
-            .filter(
-              item =>
-                item.text
-                  .toLowerCase() ===
-                  wanted &&
-                item.width > 0 &&
-                item.height > 0
-            );
-
-        if (
-          !matches.length
-        ) {
-          return null;
-        }
-
-        const preferred =
-          matches.find(
-            item =>
-              item.tag ===
-              "button"
-          ) ||
-          matches.find(
-            item =>
-              item.role ===
-              "button"
-          ) ||
-          matches.find(
-            item =>
-              item.tag ===
-              "a"
-          ) ||
-          (
-            preferPointer
-              ? matches.find(
-                  item =>
-                    item.cursor ===
-                    "pointer"
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              clean(
+                el.innerText ||
+                el.textContent ||
+                el.getAttribute(
+                  "aria-label"
                 )
-              : null
-          ) ||
-          matches[0];
-
-        preferred.element
-          .scrollIntoView({
-            block:
-              "center",
-
-            inline:
-              "center"
+              ).toLowerCase() === wanted
+            );
           });
 
-        const rect =
-          preferred.element
-            .getBoundingClientRect();
-
-        return {
-          text:
-            preferred.text,
-
-          tag:
-            preferred.tag,
-
-          role:
-            preferred.role,
-
-          cursor:
-            preferred.cursor,
-
-          x:
-            rect.left +
-            rect.width / 2,
-
-          y:
-            rect.top +
-            rect.height / 2,
-
-          width:
-            rect.width,
-
-          height:
-            rect.height
-        };
-
-      },
-      {
-        targetText:
-          text,
-
-        preferPointer
+      if (!candidates.length) {
+        return null;
       }
-    );
+
+      const selected =
+        candidates.find(
+          el =>
+            el.tagName === "BUTTON"
+        ) ||
+        candidates.find(
+          el =>
+            el.getAttribute("role") ===
+            "button"
+        ) ||
+        candidates.find(
+          el =>
+            el.tagName === "A"
+        ) ||
+        candidates.find(
+          el =>
+            getComputedStyle(el).cursor ===
+            "pointer"
+        ) ||
+        candidates[0];
+
+      selected.scrollIntoView({
+        block: "center",
+        inline: "center"
+      });
+
+      const rect =
+        selected.getBoundingClientRect();
+
+      return {
+        x:
+          rect.left +
+          rect.width / 2,
+        y:
+          rect.top +
+          rect.height / 2
+      };
+
+    }, text);
   }
 
 
-  async realClick(
-    page,
-    point
-  ) {
+  async realClick(page, point) {
     await page.mouse.move(
       point.x,
       point.y
     );
 
-    await sleep(100);
-
-    await page.mouse.down();
-
     await sleep(80);
-
+    await page.mouse.down();
+    await sleep(80);
     await page.mouse.up();
+    await sleep(400);
+  }
 
-    await sleep(500);
+
+  async navigateToFunnels(page) {
+    const url =
+      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
+
+    if (page.url() !== url) {
+      await page.goto(
+        url,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 30000
+        }
+      );
+    }
+
+    await this.waitForHighLevel(page);
   }
 
 
@@ -769,156 +608,79 @@ export class BrowserManager extends DurableObject {
     page,
     funnelName
   ) {
-    return page.evaluate(
-      name => {
+    return page.evaluate(name => {
+      const clean = value =>
+        String(value || "")
+          .replace(/\\s+/g, " ")
+          .trim();
 
-        const clean =
-          value =>
-            String(
-              value || ""
-            )
-              .replace(
-                /\\s+/g,
-                " "
-              )
-              .trim();
+      const wanted =
+        clean(name).toLowerCase();
 
-        const wanted =
-          clean(name)
-            .toLowerCase();
+      const rows =
+        Array.from(
+          document.querySelectorAll(
+            'tr,[role="row"]'
+          )
+        );
 
-        const rows =
-          Array.from(
-            document.querySelectorAll(
-              'tr, [role="row"]'
-            )
-          );
+      const row =
+        rows.find(el =>
+          clean(
+            el.innerText ||
+            el.textContent
+          )
+            .toLowerCase()
+            .includes(wanted)
+        );
 
-        const row =
-          rows.find(
-            element => {
-              const text =
-                clean(
-                  element.innerText ||
-                  element.textContent
-                )
-                  .toLowerCase();
+      if (!row) {
+        return null;
+      }
 
-              return text.includes(
-                wanted
-              );
-            }
-          );
+      const target =
+        Array.from(
+          row.querySelectorAll(
+            "div,span,a,button"
+          )
+        )
+          .find(el => {
+            const rect =
+              el.getBoundingClientRect();
 
-        if (!row) {
-          return null;
-        }
+            return (
+              clean(
+                el.innerText ||
+                el.textContent
+              ).toLowerCase() === wanted &&
+              getComputedStyle(el).cursor ===
+                "pointer" &&
+              rect.width > 20 &&
+              rect.height > 10
+            );
+          });
 
-        const targets =
-          Array.from(
-            row.querySelectorAll(
-              "div, span, a, button"
-            )
-          );
+      if (!target) {
+        return null;
+      }
 
-        const target =
-          targets.find(
-            element => {
-              const text =
-                clean(
-                  element.innerText ||
-                  element.textContent
-                )
-                  .toLowerCase();
+      target.scrollIntoView({
+        block: "center"
+      });
 
-              const style =
-                getComputedStyle(
-                  element
-                );
+      const rect =
+        target.getBoundingClientRect();
 
-              const rect =
-                element
-                  .getBoundingClientRect();
+      return {
+        x:
+          rect.left +
+          rect.width / 2,
+        y:
+          rect.top +
+          rect.height / 2
+      };
 
-              return (
-                text === wanted &&
-                style.cursor ===
-                  "pointer" &&
-                rect.width > 20 &&
-                rect.height > 10
-              );
-            }
-          );
-
-        if (!target) {
-          return null;
-        }
-
-        target.scrollIntoView({
-          block:
-            "center",
-
-          inline:
-            "center"
-        });
-
-        const rect =
-          target
-            .getBoundingClientRect();
-
-        return {
-          x:
-            rect.left +
-            rect.width / 2,
-
-          y:
-            rect.top +
-            rect.height / 2,
-
-          width:
-            rect.width,
-
-          height:
-            rect.height,
-
-          tag:
-            target.tagName
-              .toLowerCase()
-        };
-
-      },
-      funnelName
-    );
-  }
-
-
-  async navigateToFunnels(
-    page
-  ) {
-    const funnelsUrl =
-      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
-
-    if (
-      page.url() !==
-      funnelsUrl
-    ) {
-      await page.goto(
-        funnelsUrl,
-        {
-          waitUntil:
-            "domcontentloaded",
-
-          timeout:
-            30000
-        }
-      );
-    }
-
-    await this.waitForHighLevel(
-      page
-    );
-
-    return funnelsUrl;
+    }, funnelName);
   }
 
 
@@ -926,14 +688,9 @@ export class BrowserManager extends DurableObject {
     page,
     funnelName
   ) {
-    await this.navigateToFunnels(
-      page
-    );
+    await this.navigateToFunnels(page);
 
-    const before =
-      await this.snapshot(
-        page
-      );
+    const before = page.url();
 
     const point =
       await this.findFunnelClickPoint(
@@ -943,7 +700,7 @@ export class BrowserManager extends DurableObject {
 
     if (!point) {
       throw new Error(
-        `Could not find clickable funnel row for "${funnelName}".`
+        `Could not find funnel "${funnelName}".`
       );
     }
 
@@ -955,42 +712,27 @@ export class BrowserManager extends DurableObject {
     try {
       await page.waitForFunction(
         oldUrl =>
-          location.href !==
-          oldUrl,
+          location.href !== oldUrl,
         {
-          timeout:
-            20000,
-
-          polling:
-            300
+          timeout: 20000,
+          polling: 300
         },
-        before.url
+        before
       );
-
     } catch {}
 
-    await sleep(
-      1200
-    );
+    await sleep(1000);
 
-    const after =
-      await this.snapshot(
-        page
-      );
+    const snap =
+      await this.snapshot(page);
 
-    const stillList =
-      after.url.endsWith(
+    if (
+      snap.url.endsWith(
         "/funnels-websites/funnels"
-      ) &&
-      after.body
-        .toLowerCase()
-        .includes(
-          "search for funnels"
-        );
-
-    if (stillList) {
+      )
+    ) {
       throw new Error(
-        `Funnel "${funnelName}" was clicked but did not open.`
+        "Funnel click did not navigate."
       );
     }
 
@@ -1001,42 +743,10 @@ export class BrowserManager extends DurableObject {
 
     await this.storage.put(
       "currentFunnelUrl",
-      after.url
+      snap.url
     );
 
-    return after;
-  }
-
-
-  async ensureFunnelOpen(
-    page,
-    funnelName
-  ) {
-    const snap =
-      await this.snapshot(
-        page
-      );
-
-    const bodyLower =
-      snap.body
-        .toLowerCase();
-
-    if (
-      bodyLower.includes(
-        funnelName
-          .toLowerCase()
-      ) &&
-      !bodyLower.includes(
-        "search for funnels"
-      )
-    ) {
-      return snap;
-    }
-
-    return this.openStoredFunnel(
-      page,
-      funnelName
-    );
+    return snap;
   }
 
 
@@ -1045,31 +755,18 @@ export class BrowserManager extends DurableObject {
     stepName
   ) {
     const current =
-      await this.snapshot(
-        page
-      );
+      await this.snapshot(page);
 
     const lower =
-      current.body
-        .toLowerCase();
+      current.body.toLowerCase();
 
     if (
       lower.includes(
-        stepName
-          .toLowerCase()
+        stepName.toLowerCase()
       ) &&
-      lower.includes(
-        "overview"
-      ) &&
-      lower.includes(
-        "products"
-      ) &&
-      lower.includes(
-        "publishing"
-      ) &&
-      lower.includes(
-        "edit"
-      )
+      lower.includes("overview") &&
+      lower.includes("publishing") &&
+      lower.includes("edit")
     ) {
       await this.storage.put(
         "currentStepName",
@@ -1082,99 +779,34 @@ export class BrowserManager extends DurableObject {
     const point =
       await this.findExactClickPoint(
         page,
-        stepName,
-        true
+        stepName
       );
 
     if (!point) {
       throw new Error(
-        `Could not find step "${stepName}" in the current funnel.`
+        `Could not find step "${stepName}".`
       );
     }
-
-    const before =
-      await this.snapshot(
-        page
-      );
 
     await this.realClick(
       page,
       point
     );
 
-    try {
-      await page.waitForFunction(
-        ({
-          oldUrl,
-          step
-        }) => {
-
-          const body =
-            (
-              document.body
-                ?.innerText ||
-              ""
-            )
-              .toLowerCase();
-
-          return (
-            location.href !==
-              oldUrl ||
-            (
-              body.includes(
-                step.toLowerCase()
-              ) &&
-              body.includes(
-                "overview"
-              ) &&
-              body.includes(
-                "publishing"
-              )
-            )
-          );
-        },
-        {
-          timeout:
-            15000,
-
-          polling:
-            300
-        },
-        {
-          oldUrl:
-            before.url,
-
-          step:
-            stepName
-        }
-      );
-
-    } catch {}
-
-    await sleep(
-      1200
-    );
+    await sleep(1200);
 
     const after =
-      await this.snapshot(
-        page
-      );
-
-    const afterLower =
-      after.body
-        .toLowerCase();
+      await this.snapshot(page);
 
     if (
-      !afterLower.includes(
-        stepName
-          .toLowerCase()
-      ) ||
-      !afterLower.includes(
-        "edit"
-      )
+      !after.body
+        .toLowerCase()
+        .includes(
+          stepName.toLowerCase()
+        )
     ) {
       throw new Error(
-        `Step "${stepName}" was clicked but its overview could not be verified.`
+        "Step overview could not be verified."
       );
     }
 
@@ -1192,150 +824,62 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable"
+      }, 409);
     }
 
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
-    }
+    const page =
+      pages[0] ||
+      await browser.newPage();
 
-    await this.navigateToFunnels(
-      page
-    );
+    await this.navigateToFunnels(page);
 
-    const data =
-      await page.evaluate(
-        () => {
-
-          const clean =
-            value =>
-              String(
-                value || ""
-              )
-                .replace(
-                  /\\s+/g,
-                  " "
-                )
-                .trim();
-
-          return {
-            title:
-              document.title,
-
-            url:
-              location.href,
-
-            rows:
-              Array.from(
-                document.querySelectorAll(
-                  'tr, [role="row"]'
-                )
-              )
-                .map(
-                  row =>
-                    clean(
-                      row.innerText ||
-                      row.textContent
-                    )
-                )
-                .filter(Boolean),
-
-            bodyPreview:
-              clean(
-                document.body
-                  ?.innerText ||
-                ""
-              ).slice(
-                0,
-                8000
-              )
-          };
-        }
-      );
+    const result =
+      await this.snapshot(page);
 
     return json({
       status:
         "funnels-inspection-success",
-
-      readOnly:
-        true,
-
-      funnels:
-        data
+      readOnly: true,
+      funnels: result
     });
   }
 
 
-  async openFunnel(
-    request
-  ) {
+  async openFunnel(request) {
     const args =
-      await this.body(
-        request
-      );
+      await this.body(request);
 
     const name =
-      String(
-        args.name || ""
-      ).trim();
+      String(args.name || "").trim();
 
     if (!name) {
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            "Funnel name is required."
-        },
-        400
-      );
+      return json({
+        status: "error",
+        message:
+          "Funnel name is required."
+      }, 400);
     }
 
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable"
+      }, 409);
     }
 
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
-    }
+    const page =
+      pages[0] ||
+      await browser.newPage();
 
     const result =
       await this.openStoredFunnel(
@@ -1344,28 +888,10 @@ export class BrowserManager extends DurableObject {
       );
 
     return json({
-      status:
-        "funnel-opened",
-
-      verified:
-        true,
-
-      funnelName:
-        name,
-
-      page: {
-        title:
-          result.title,
-
-        url:
-          result.url,
-
-        bodyPreview:
-          result.body.slice(
-            0,
-            8000
-          )
-      }
+      status: "funnel-opened",
+      verified: true,
+      funnelName: name,
+      page: result
     });
   }
 
@@ -1375,133 +901,70 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable"
+      }, 409);
     }
 
-    const page =
-      await this.chooseHighLevelPage(
-        browser
-      );
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+    if (!pages.length) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
     }
 
-    await this.waitForHighLevel(
-      page
-    );
-
-    const data =
-      await this.snapshot(
-        page
-      );
+    const result =
+      await this.snapshot(pages[0]);
 
     return json({
       status:
         "funnel-steps-inspection-success",
-
-      readOnly:
-        true,
-
+      readOnly: true,
       currentFunnel:
         await this.storage.get(
           "currentFunnelName"
         ) || null,
-
-      result: {
-        title:
-          data.title,
-
-        url:
-          data.url,
-
-        bodyPreview:
-          data.body.slice(
-            0,
-            12000
-          )
-      }
+      result
     });
   }
 
 
-  async inspectFunnelStep(
-    request
-  ) {
+  async inspectFunnelStep(request) {
     const args =
-      await this.body(
-        request
-      );
+      await this.body(request);
 
     const name =
-      String(
-        args.name || ""
-      ).trim();
+      String(args.name || "").trim();
 
     if (!name) {
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            "Step/page name is required."
-        },
-        400
-      );
+      return json({
+        status: "error",
+        message:
+          "Step/page name is required."
+      }, 400);
     }
 
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable"
+      }, 409);
     }
 
-    const page =
-      await this.chooseHighLevelPage(
-        browser
-      );
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+    if (!pages.length) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
     }
 
-    const funnelName =
-      await this.storage.get(
-        "currentFunnelName"
-      );
-
-    if (funnelName) {
-      await this.ensureFunnelOpen(
-        page,
-        funnelName
-      );
-    }
+    const page = pages[0];
 
     const result =
       await this.selectStepOverview(
@@ -1509,297 +972,13 @@ export class BrowserManager extends DurableObject {
         name
       );
 
-    const controls =
-      await page.evaluate(
-        () => {
-
-          const clean =
-            value =>
-              String(
-                value || ""
-              )
-                .replace(
-                  /\\s+/g,
-                  " "
-                )
-                .trim();
-
-          return Array.from(
-            document.querySelectorAll(
-              'a, button, [role="button"], [role="link"]'
-            )
-          )
-            .map(
-              el => ({
-                text:
-                  clean(
-                    el.innerText ||
-                    el.textContent ||
-                    el.getAttribute(
-                      "aria-label"
-                    )
-                  ),
-
-                href:
-                  el.tagName === "A"
-                    ? el.href
-                    : ""
-              })
-            )
-            .filter(
-              item =>
-                item.text ||
-                item.href
-            )
-            .slice(
-              0,
-              250
-            );
-        }
-      );
-
     return json({
       status:
         "funnel-step-inspection-success",
-
-      stepName:
-        name,
-
-      readOnly:
-        true,
-
-      result: {
-        title:
-          result.title,
-
-        url:
-          result.url,
-
-        bodyPreview:
-          result.body.slice(
-            0,
-            12000
-          ),
-
-        controls
-      }
+      stepName: name,
+      readOnly: true,
+      result
     });
-  }
-
-
-  async inspectFrame(
-    frame
-  ) {
-    try {
-      return await frame.evaluate(
-        () => {
-
-          const clean =
-            value =>
-              String(
-                value || ""
-              )
-                .replace(
-                  /\\s+/g,
-                  " "
-                )
-                .trim();
-
-          const body =
-            clean(
-              document.body
-                ?.innerText ||
-              ""
-            );
-
-          const lower =
-            body.toLowerCase();
-
-          const signals =
-            [
-              "save",
-              "preview",
-              "desktop",
-              "mobile",
-              "section",
-              "row",
-              "column",
-              "element",
-              "undo",
-              "redo",
-              "settings"
-            ].filter(
-              word =>
-                lower.includes(
-                  word
-                )
-            );
-
-          return {
-            url:
-              location.href,
-
-            bodyPreview:
-              body.slice(
-                0,
-                6000
-              ),
-
-            signals
-          };
-        }
-      );
-
-    } catch (error) {
-      return {
-        url:
-          frame.url(),
-
-        error:
-          error instanceof Error
-            ? error.message
-            : String(error)
-      };
-    }
-  }
-
-
-  async detectBuilder(
-    page
-  ) {
-    const snap =
-      await this.snapshot(
-        page
-      );
-
-    const lower =
-      snap.body
-        .toLowerCase();
-
-    const urlLower =
-      snap.url
-        .toLowerCase();
-
-    const urlSignals =
-      (
-        urlLower.includes(
-          "builder"
-        ) ||
-        urlLower.includes(
-          "editor"
-        ) ||
-        urlLower.includes(
-          "funnel-builder"
-        )
-      );
-
-    const topSignals =
-      [
-        "save",
-        "preview",
-        "desktop",
-        "mobile",
-        "undo",
-        "redo",
-        "sections",
-        "elements"
-      ].filter(
-        word =>
-          lower.includes(
-            word
-          )
-      );
-
-    const frames =
-      [];
-
-    for (
-      const frame
-      of page.frames()
-    ) {
-      frames.push(
-        await this.inspectFrame(
-          frame
-        )
-      );
-    }
-
-    const frameSignals =
-      frames.reduce(
-        (
-          count,
-          frame
-        ) =>
-          count +
-          (
-            Array.isArray(
-              frame.signals
-            )
-              ? frame.signals
-                  .length
-              : 0
-          ),
-        0
-      );
-
-    const isBuilder =
-      urlSignals ||
-      topSignals.length >= 4 ||
-      frameSignals >= 2;
-
-    return {
-      isBuilder,
-
-      title:
-        snap.title,
-
-      url:
-        snap.url,
-
-      topSignals,
-
-      frameSignals,
-
-      bodyPreview:
-        snap.body.slice(
-          0,
-          5000
-        ),
-
-      frames
-    };
-  }
-
-
-  async findBuilderPage(
-    browser
-  ) {
-    const pages =
-      await browser.pages();
-
-    for (
-      const page
-      of pages
-    ) {
-      try {
-        const detection =
-          await this.detectBuilder(
-            page
-          );
-
-        if (
-          detection.isBuilder
-        ) {
-          return {
-            page,
-            detection
-          };
-        }
-
-      } catch {}
-    }
-
-    return null;
   }
 
 
@@ -1808,13 +987,9 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable"
+      }, 409);
     }
 
     const existing =
@@ -1823,1198 +998,874 @@ export class BrowserManager extends DurableObject {
       );
 
     if (existing) {
+      const frame =
+        await this.getBuilderFrame(
+          existing
+        );
+
       return json({
-        status:
-          "page-builder-open",
-
-        verified:
-          true,
-
-        alreadyOpen:
-          true,
-
-        builder:
-          existing.detection
+        status: "page-builder-open",
+        verified: Boolean(frame),
+        alreadyOpen: true,
+        url: existing.url()
       });
     }
 
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+    if (!pages.length) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
     }
 
-    const funnelName =
+    const page = pages[0];
+
+    const funnel =
       await this.storage.get(
         "currentFunnelName"
       );
 
-    const stepName =
+    const step =
       await this.storage.get(
         "currentStepName"
       );
 
-    if (!funnelName) {
-      return json(
-        {
-          status:
-            "no-current-funnel",
+    if (!funnel || !step) {
+      return json({
+        status:
+          "funnel-or-step-not-selected"
+      }, 409);
+    }
 
-          message:
-            "Open a funnel first."
-        },
-        409
+    const snap =
+      await this.snapshot(page);
+
+    if (
+      !snap.body.includes(step) ||
+      !snap.body.includes("Edit")
+    ) {
+      await this.openStoredFunnel(
+        page,
+        funnel
+      );
+
+      await this.selectStepOverview(
+        page,
+        step
       );
     }
 
-    if (!stepName) {
-      return json(
-        {
-          status:
-            "no-current-step",
-
-          message:
-            "Select a funnel step first."
-        },
-        409
-      );
-    }
-
-    await this.ensureFunnelOpen(
-      page,
-      funnelName
-    );
-
-    await this.selectStepOverview(
-      page,
-      stepName
-    );
-
-    const before =
-      await this.snapshot(
-        page
-      );
-
-    const editPoint =
+    const point =
       await this.findExactClickPoint(
         page,
-        "Edit",
-        true
+        "Edit"
       );
 
-    if (!editPoint) {
-      return json(
-        {
-          status:
-            "edit-control-not-found",
-
-          funnelName,
-
-          stepName,
-
-          page: {
-            title:
-              before.title,
-
-            url:
-              before.url,
-
-            bodyPreview:
-              before.body.slice(
-                0,
-                5000
-              )
-          }
-        },
-        404
-      );
+    if (!point) {
+      return json({
+        status:
+          "edit-control-not-found"
+      }, 404);
     }
 
     await this.realClick(
       page,
-      editPoint
+      point
     );
 
-    let builder =
-      null;
+    let builderPage = null;
 
-    const start =
-      Date.now();
+    for (let i = 0; i < 40; i++) {
+      await sleep(750);
 
-    while (
-      Date.now() -
-      start <
-      30000
-    ) {
-      await sleep(
-        750
-      );
-
-      builder =
+      builderPage =
         await this.findBuilderPage(
           browser
         );
 
-      if (builder) {
+      if (builderPage) {
         break;
       }
     }
 
-    if (!builder) {
-      return json(
-        {
-          status:
-            "page-builder-not-verified",
+    if (!builderPage) {
+      return json({
+        status:
+          "page-builder-not-verified"
+      }, 409);
+    }
 
-          message:
-            "Edit was clicked but the builder could not be verified."
-        },
-        409
+    const frame =
+      await this.getBuilderFrame(
+        builderPage
       );
+
+    if (!frame) {
+      return json({
+        status:
+          "builder-frame-not-found"
+      }, 409);
     }
 
     await this.storage.put(
       "builderUrl",
-      builder.page.url()
+      builderPage.url()
     );
 
     return json({
-      status:
-        "page-builder-open",
-
-      verified:
-        true,
-
-      funnelName,
-
-      stepName,
-
-      builder:
-        builder.detection
+      status: "page-builder-open",
+      verified: true,
+      funnelName: funnel,
+      stepName: step,
+      builderUrl:
+        builderPage.url(),
+      frameUrl:
+        frame.url()
     });
   }
 
 
   async inspectPageBuilder() {
-    const browser =
-      await this.connectToBrowser();
+    try {
+      const { page, frame } =
+        await this.getBuilderContext();
 
-    if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
-    }
+      const body =
+        await frame.evaluate(() =>
+          (
+            document.body?.innerText || ""
+          ).slice(0, 15000)
+        );
 
-    const found =
-      await this.findBuilderPage(
-        browser
-      );
-
-    if (!found) {
-      return json(
-        {
-          status:
-            "page-builder-not-open",
-
-          message:
-            "No verified HighLevel page builder is currently open."
-        },
-        409
-      );
-    }
-
-    const page =
-      found.page;
-
-    const controls =
-      await page.evaluate(
-        () => {
-
-          const clean =
-            value =>
-              String(
-                value || ""
-              )
-                .replace(
-                  /\\s+/g,
-                  " "
-                )
-                .trim();
-
-          const visible =
-            el => {
-              const style =
-                getComputedStyle(
-                  el
-                );
-
-              const rect =
-                el.getBoundingClientRect();
-
-              return (
-                style.display !==
-                  "none" &&
-                style.visibility !==
-                  "hidden" &&
-                rect.width > 0 &&
-                rect.height > 0
-              );
-            };
-
-          return Array.from(
-            document.querySelectorAll(
-              'button, a, [role="button"], [role="link"], input, textarea, select'
-            )
-          )
-            .filter(
-              visible
-            )
-            .map(
-              el => ({
-                tag:
-                  el.tagName
-                    .toLowerCase(),
-
-                text:
-                  clean(
-                    el.innerText ||
-                    el.textContent ||
-                    el.getAttribute(
-                      "aria-label"
-                    ) ||
-                    el.getAttribute(
-                      "placeholder"
-                    )
-                  ),
-
-                href:
-                  el.tagName === "A"
-                    ? el.href
-                    : ""
-              })
-            )
-            .filter(
-              item =>
-                item.text ||
-                item.href
-            )
-            .slice(
-              0,
-              400
-            );
+      return json({
+        status:
+          "page-builder-inspection-success",
+        verified: true,
+        readOnly: true,
+        builder: {
+          url: page.url(),
+          frameUrl: frame.url(),
+          bodyPreview: body
         }
-      );
+      });
 
-    const frames =
-      [];
-
-    for (
-      const frame
-      of page.frames()
-    ) {
-      frames.push(
-        await this.inspectFrame(
-          frame
-        )
-      );
+    } catch (error) {
+      return json({
+        status:
+          "page-builder-not-open",
+        message:
+          error.message
+      }, 409);
     }
-
-    return json({
-      status:
-        "page-builder-inspection-success",
-
-      verified:
-        true,
-
-      readOnly:
-        true,
-
-      builder: {
-        title:
-          await page.title(),
-
-        url:
-          page.url(),
-
-        controls,
-
-        frames
-      }
-    });
-  }
-
-
-  async getBuilderFrame(
-    page
-  ) {
-    const frames =
-      page.frames();
-
-    const preferred =
-      frames.find(
-        frame =>
-          frame.url().includes(
-            "page-builder.leadconnectorhq.com"
-          )
-      );
-
-    if (preferred) {
-      return preferred;
-    }
-
-    /*
-     * Fallback:
-     * choose any child frame whose body contains
-     * the page content rather than the empty shell.
-     */
-    for (
-      const frame
-      of frames
-    ) {
-      if (
-        frame ===
-        page.mainFrame()
-      ) {
-        continue;
-      }
-
-      try {
-        const length =
-          await frame.evaluate(
-            () =>
-              (
-                document.body
-                  ?.innerText ||
-                ""
-              ).trim().length
-          );
-
-        if (
-          length > 200
-        ) {
-          return frame;
-        }
-
-      } catch {}
-    }
-
-    return null;
   }
 
 
   async inspectBuilderElements() {
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
-    }
-
-    const found =
-      await this.findBuilderPage(
-        browser
-      );
-
-    if (!found) {
-      return json(
-        {
-          status:
-            "page-builder-not-open",
-
-          message:
-            "No verified HighLevel page builder is currently open."
-        },
-        409
-      );
-    }
-
-    const page =
-      found.page;
-
-    const frame =
-      await this.getBuilderFrame(
-        page
-      );
-
-    if (!frame) {
-      return json(
-        {
-          status:
-            "builder-content-frame-not-found",
-
-          message:
-            "The HighLevel builder is open, but its editable content frame could not be located."
-        },
-        409
-      );
-    }
-
-    const elements =
-      await frame.evaluate(
-        () => {
-
-          const clean =
-            value =>
-              String(
-                value || ""
-              )
-                .replace(
-                  /\\s+/g,
-                  " "
-                )
-                .trim();
-
-
-          const visible =
-            element => {
-              const style =
-                window.getComputedStyle(
-                  element
-                );
-
-              const rect =
-                element
-                  .getBoundingClientRect();
-
-              return (
-                style.display !==
-                  "none" &&
-                style.visibility !==
-                  "hidden" &&
-                style.opacity !==
-                  "0" &&
-                rect.width > 0 &&
-                rect.height > 0
-              );
-            };
-
-
-          const cssEscape =
-            value => {
-              try {
-                return CSS.escape(
-                  value
-                );
-
-              } catch {
-                return String(
-                  value
-                )
-                  .replace(
-                    /[^a-zA-Z0-9_-]/g,
-                    "\\\\$&"
-                  );
-              }
-            };
-
-
-          const cssPath =
-            element => {
-
-              if (
-                element.id
-              ) {
-                return (
-                  "#" +
-                  cssEscape(
-                    element.id
-                  )
-                );
-              }
-
-              const parts =
-                [];
-
-              let current =
-                element;
-
-              let depth =
-                0;
-
-              while (
-                current &&
-                current.nodeType === 1 &&
-                current !==
-                  document.body &&
-                depth < 8
-              ) {
-                let part =
-                  current.tagName
-                    .toLowerCase();
-
-                if (
-                  current.id
-                ) {
-                  part +=
-                    "#" +
-                    cssEscape(
-                      current.id
-                    );
-
-                  parts.unshift(
-                    part
-                  );
-
-                  break;
-                }
-
-                const classes =
-                  Array.from(
-                    current.classList ||
-                    []
-                  )
-                    .filter(
-                      cls =>
-                        cls &&
-                        cls.length < 80
-                    )
-                    .slice(
-                      0,
-                      2
-                    );
-
-                if (
-                  classes.length
-                ) {
-                  part +=
-                    "." +
-                    classes
-                      .map(
-                        cssEscape
-                      )
-                      .join(".");
-                }
-
-                const parent =
-                  current
-                    .parentElement;
-
-                if (parent) {
-                  const siblings =
-                    Array.from(
-                      parent.children
-                    )
-                      .filter(
-                        sibling =>
-                          sibling.tagName ===
-                          current.tagName
-                      );
-
-                  if (
-                    siblings.length >
-                    1
-                  ) {
-                    const index =
-                      siblings.indexOf(
-                        current
-                      ) + 1;
-
-                    part +=
-                      `:nth-of-type(${index})`;
-                  }
-                }
-
-                parts.unshift(
-                  part
-                );
-
-                current =
-                  current.parentElement;
-
-                depth++;
-              }
-
-              return parts.join(
-                " > "
-              );
-            };
-
-
-          const dataAttributes =
-            element => {
-
-              const result =
-                {};
-
-              for (
-                const attr
-                of Array.from(
-                  element.attributes ||
-                  []
-                )
-              ) {
-                if (
-                  attr.name.startsWith(
-                    "data-"
-                  )
-                ) {
-                  result[
-                    attr.name
-                  ] =
-                    attr.value;
-                }
-              }
-
-              return result;
-            };
-
-
-          const usefulAttributes =
-            element => {
-
-              const names =
-                [
-                  "id",
-                  "name",
-                  "role",
-                  "type",
-                  "href",
-                  "target",
-                  "contenteditable",
-                  "aria-label",
-                  "aria-labelledby",
-                  "placeholder",
-                  "title",
-                  "value"
-                ];
-
-              const output =
-                {};
-
-              for (
-                const name
-                of names
-              ) {
-                const value =
-                  element.getAttribute(
-                    name
-                  );
-
-                if (
-                  value !==
-                    null &&
-                  value !==
-                    ""
-                ) {
-                  output[
-                    name
-                  ] =
-                    value;
-                }
-              }
-
-              return output;
-            };
-
-
-          const ancestorTrail =
-            element => {
-
-              const trail =
-                [];
-
-              let current =
-                element
-                  .parentElement;
-
-              let depth =
-                0;
-
-              while (
-                current &&
-                depth < 4
-              ) {
-                trail.push({
-                  tag:
-                    current.tagName
-                      .toLowerCase(),
-
-                  id:
-                    current.id ||
-                    "",
-
-                  classes:
-                    Array.from(
-                      current.classList ||
-                      []
-                    )
-                      .slice(
-                        0,
-                        5
-                      ),
-
-                  text:
-                    clean(
-                      current
-                        .innerText ||
-                      ""
-                    ).slice(
-                      0,
-                      180
-                    ),
-
-                  data:
-                    dataAttributes(
-                      current
-                    )
-                });
-
-                current =
-                  current
-                    .parentElement;
-
-                depth++;
-              }
-
-              return trail;
-            };
-
-
-          const classify =
-            element => {
-
-              const tag =
-                element.tagName
-                  .toLowerCase();
-
-              const role =
-                (
-                  element.getAttribute(
-                    "role"
-                  ) ||
-                  ""
-                )
-                  .toLowerCase();
-
-              const contenteditable =
-                element.isContentEditable ||
-                element.getAttribute(
-                  "contenteditable"
-                ) ===
-                  "true";
-
-              if (
-                /^h[1-6]$/.test(
-                  tag
-                )
-              ) {
-                return "heading";
-              }
-
-              if (
-                tag ===
-                  "button" ||
-                role ===
-                  "button"
-              ) {
-                return "button";
-              }
-
-              if (
-                tag ===
-                "a"
-              ) {
-                return "link";
-              }
-
-              if (
-                tag ===
-                  "input" ||
-                tag ===
-                  "textarea" ||
-                tag ===
-                  "select"
-              ) {
-                return "input";
-              }
-
-              if (
-                contenteditable
-              ) {
-                return "contenteditable";
-              }
-
-              if (
-                tag ===
-                  "p" ||
-                tag ===
-                  "span" ||
-                tag ===
-                  "div" ||
-                tag ===
-                  "li"
-              ) {
-                return "text";
-              }
-
-              return "other";
-            };
-
-
-          const selector =
-            [
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "h6",
-              "p",
-              "span",
-              "div",
-              "li",
-              "button",
-              "a",
-              "input",
-              "textarea",
-              "select",
-              "[contenteditable='true']",
-              "[role='button']",
-              "[data-element-type]",
-              "[data-id]",
-              "[data-uuid]"
-            ].join(",");
-
-
-          const all =
-            Array.from(
-              document
-                .querySelectorAll(
-                  selector
-                )
-            )
-              .filter(
-                visible
-              );
-
-
-          const records =
-            [];
-
-          let index =
-            0;
-
-          for (
-            const element
-            of all
-          ) {
-            const text =
-              clean(
-                element.innerText ||
-                element.textContent ||
-                element.getAttribute(
-                  "aria-label"
-                ) ||
-                element.getAttribute(
-                  "placeholder"
-                ) ||
-                ""
-              );
-
-            const tag =
-              element.tagName
-                .toLowerCase();
-
-            const type =
-              classify(
-                element
-              );
-
+    try {
+      const { page, frame } =
+        await this.getBuilderContext();
+
+      const result =
+        await frame.evaluate(() => {
+          const clean = value =>
+            String(value || "")
+              .replace(/\\s+/g, " ")
+              .trim();
+
+          const visible = el => {
             const rect =
-              element
-                .getBoundingClientRect();
+              el.getBoundingClientRect();
 
             const style =
-              window
-                .getComputedStyle(
-                  element
-                );
+              getComputedStyle(el);
 
-            const contenteditable =
-              Boolean(
-                element
-                  .isContentEditable ||
-                element.getAttribute(
-                  "contenteditable"
-                ) ===
-                  "true"
-              );
-
-            const data =
-              dataAttributes(
-                element
-              );
-
-            const attrs =
-              usefulAttributes(
-                element
-              );
-
-            const hasUsefulData =
-              Object.keys(
-                data
-              ).length > 0;
-
-            const isUseful =
-              text ||
-              contenteditable ||
-              type ===
-                "input" ||
-              type ===
-                "button" ||
-              type ===
-                "link" ||
-              hasUsefulData;
-
-            if (
-              !isUseful
-            ) {
-              continue;
-            }
-
-            records.push({
-              elementKey:
-                `el-${String(
-                  index
-                ).padStart(
-                  4,
-                  "0"
-                )}`,
-
-              type,
-
-              tag,
-
-              text:
-                text.slice(
-                  0,
-                  500
-                ),
-
-              selector:
-                cssPath(
-                  element
-                ),
-
-              id:
-                element.id ||
-                "",
-
-              classes:
-                Array.from(
-                  element.classList ||
-                  []
-                )
-                  .slice(
-                    0,
-                    10
-                  ),
-
-              contenteditable,
-
-              cursor:
-                style.cursor,
-
-              display:
-                style.display,
-
-              position:
-                style.position,
-
-              attributes:
-                attrs,
-
-              dataAttributes:
-                data,
-
-              rect: {
-                x:
-                  Math.round(
-                    rect.x
-                  ),
-
-                y:
-                  Math.round(
-                    rect.y
-                  ),
-
-                width:
-                  Math.round(
-                    rect.width
-                  ),
-
-                height:
-                  Math.round(
-                    rect.height
-                  )
-              },
-
-              parent:
-                element
-                  .parentElement
-                  ? {
-                      tag:
-                        element
-                          .parentElement
-                          .tagName
-                          .toLowerCase(),
-
-                      id:
-                        element
-                          .parentElement
-                          .id ||
-                        "",
-
-                      classes:
-                        Array.from(
-                          element
-                            .parentElement
-                            .classList ||
-                          []
-                        )
-                          .slice(
-                            0,
-                            8
-                          ),
-
-                      text:
-                        clean(
-                          element
-                            .parentElement
-                            .innerText ||
-                          ""
-                        ).slice(
-                          0,
-                          250
-                        )
-                    }
-                  : null,
-
-              ancestors:
-                ancestorTrail(
-                  element
-                )
-            });
-
-            index++;
-
-            if (
-              records.length >=
-              600
-            ) {
-              break;
-            }
-          }
-
-
-          const likelyEditable =
-            records.filter(
-              item =>
-                item.contenteditable ||
-                item.type ===
-                  "input" ||
-                item.type ===
-                  "heading" ||
-                item.type ===
-                  "button" ||
-                item.type ===
-                  "link" ||
-                (
-                  item.type ===
-                    "text" &&
-                  item.text
-                    .length >
-                    0 &&
-                  (
-                    item.cursor ===
-                      "text" ||
-                    Object.keys(
-                      item
-                        .dataAttributes
-                    ).length >
-                      0
-                  )
-                )
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.display !== "none" &&
+              style.visibility !== "hidden"
             );
+          };
 
+          const candidates =
+            Array.from(
+              document.querySelectorAll(
+                [
+                  "h1",
+                  "h2",
+                  "h3",
+                  "h4",
+                  "h5",
+                  "h6",
+                  "p",
+                  "button",
+                  "a",
+                  ".editor",
+                  ".element"
+                ].join(",")
+              )
+            )
+              .filter(visible)
+              .map((el, index) => ({
+                index,
+                tag:
+                  el.tagName.toLowerCase(),
+                id:
+                  el.id || "",
+                text:
+                  clean(
+                    el.innerText ||
+                    el.textContent
+                  ).slice(0, 500),
+                classes:
+                  Array.from(
+                    el.classList || []
+                  ).slice(0, 10)
+              }))
+              .filter(item =>
+                item.text || item.id
+              );
 
           return {
-            frameUrl:
-              location.href,
-
-            pageTitle:
-              document.title,
-
-            totalCandidates:
-              records.length,
-
-            editableCandidateCount:
-              likelyEditable.length,
-
-            editableCandidates:
-              likelyEditable.slice(
-                0,
-                350
-              ),
-
-            allCandidates:
-              records.slice(
-                0,
-                600
-              )
+            count: candidates.length,
+            candidates:
+              candidates.slice(0, 600)
           };
-        }
+        });
+
+      return json({
+        status:
+          "builder-elements-inspection-success",
+        verified: true,
+        readOnly: true,
+        builderUrl: page.url(),
+        frameUrl: frame.url(),
+        ...result
+      });
+
+    } catch (error) {
+      return json({
+        status:
+          "builder-elements-inspection-failed",
+        message:
+          error.message
+      }, 409);
+    }
+  }
+
+
+  /*
+   * REAL WRITE ACTION
+   *
+   * The selector should be the exact selector
+   * returned by our DOM inspection.
+   *
+   * expectedText protects against editing the
+   * wrong element if HighLevel's DOM changes.
+   */
+  async editBuilderText(request) {
+    const args =
+      await this.body(request);
+
+    const selector =
+      String(
+        args.selector || ""
+      ).trim();
+
+    const expectedText =
+      String(
+        args.expectedText || ""
+      ).trim();
+
+    const newText =
+      String(
+        args.newText || ""
       );
 
+    if (!selector) {
+      return json({
+        status: "error",
+        message:
+          "selector is required."
+      }, 400);
+    }
+
+    if (!newText.trim()) {
+      return json({
+        status: "error",
+        message:
+          "newText is required."
+      }, 400);
+    }
+
+    const {
+      page,
+      frame
+    } =
+      await this.getBuilderContext();
+
+    const target =
+      await frame.$(
+        selector
+      );
+
+    if (!target) {
+      return json({
+        status:
+          "builder-edit-target-not-found",
+        selector
+      }, 404);
+    }
+
+    const beforeText =
+      await frame.$eval(
+        selector,
+        el =>
+          String(
+            el.innerText ||
+            el.textContent ||
+            ""
+          )
+            .replace(/\\s+/g, " ")
+            .trim()
+      );
+
+    if (
+      expectedText &&
+      beforeText !==
+        this.clean(expectedText)
+    ) {
+      return json({
+        status:
+          "builder-edit-safety-check-failed",
+        message:
+          "The current text does not match expectedText, so no edit was made.",
+        selector,
+        expectedText:
+          this.clean(
+            expectedText
+          ),
+        actualText:
+          beforeText
+      }, 409);
+    }
+
+    /*
+     * Bring the element on screen.
+     */
+    await frame.$eval(
+      selector,
+      el =>
+        el.scrollIntoView({
+          block: "center",
+          inline: "center"
+        })
+    );
+
+    await sleep(300);
+
+    /*
+     * HighLevel's TipTap / ProseMirror text
+     * becomes editable after clicking the text
+     * element. Use genuine browser interaction.
+     */
+    await target.click({
+      clickCount: 2,
+      delay: 80
+    });
+
+    await sleep(500);
+
+    /*
+     * Find the active TipTap editor associated
+     * with this element.
+     */
+    const editableInfo =
+      await frame.evaluate(
+        selector => {
+          const selected =
+            document.querySelector(
+              selector
+            );
+
+          if (!selected) {
+            return {
+              found: false
+            };
+          }
+
+          const wrapper =
+            selected.closest(
+              ".element"
+            ) ||
+            selected.parentElement;
+
+          const editors =
+            [
+              selected.matches(
+                ".tiptap.ProseMirror"
+              )
+                ? selected
+                : null,
+
+              selected.closest(
+                ".tiptap.ProseMirror"
+              ),
+
+              wrapper
+                ? wrapper.querySelector(
+                    ".tiptap.ProseMirror"
+                  )
+                : null
+            ]
+              .filter(Boolean);
+
+          const editor =
+            editors.find(
+              el =>
+                el.getAttribute(
+                  "contenteditable"
+                ) === "true" ||
+                el.isContentEditable
+            ) ||
+            editors[0];
+
+          if (!editor) {
+            return {
+              found: false
+            };
+          }
+
+          editor.scrollIntoView({
+            block: "center"
+          });
+
+          editor.focus();
+
+          return {
+            found: true,
+            contenteditable:
+              editor.getAttribute(
+                "contenteditable"
+              ),
+            text:
+              (
+                editor.innerText ||
+                editor.textContent ||
+                ""
+              )
+                .replace(/\\s+/g, " ")
+                .trim()
+          };
+        },
+        selector
+      );
+
+    if (!editableInfo.found) {
+      return json({
+        status:
+          "builder-inline-editor-not-found",
+        message:
+          "The target was found, but HighLevel did not expose its TipTap editor after clicking. No text was changed.",
+        selector,
+        beforeText
+      }, 409);
+    }
+
+    /*
+     * Focus is now inside the iframe editor.
+     * Browser keyboard input goes to that focused
+     * ProseMirror element.
+     */
+    await page.keyboard.down(
+      "Control"
+    );
+
+    await page.keyboard.press(
+      "A"
+    );
+
+    await page.keyboard.up(
+      "Control"
+    );
+
+    await sleep(100);
+
+    await page.keyboard.type(
+      newText,
+      {
+        delay: 8
+      }
+    );
+
+    await sleep(700);
+
+    /*
+     * Blur the editor so Vue/TipTap commits its
+     * local model update.
+     */
+    await frame.evaluate(() => {
+      const active =
+        document.activeElement;
+
+      if (
+        active &&
+        typeof active.blur ===
+          "function"
+      ) {
+        active.blur();
+      }
+    });
+
+    await sleep(600);
+
+    const afterText =
+      await frame.$eval(
+        selector,
+        el =>
+          String(
+            el.innerText ||
+            el.textContent ||
+            ""
+          )
+            .replace(/\\s+/g, " ")
+            .trim()
+      );
+
+    const expectedAfter =
+      this.clean(newText);
+
+    if (
+      afterText !==
+      expectedAfter
+    ) {
+      return json({
+        status:
+          "builder-text-edit-not-verified",
+        message:
+          "HighLevel received the edit interaction, but the resulting visible text did not exactly match the requested text.",
+        selector,
+        beforeText,
+        requestedText:
+          expectedAfter,
+        actualText:
+          afterText
+      }, 409);
+    }
+
+    await this.storage.put(
+      "builderHasUnsavedChanges",
+      true
+    );
 
     return json({
       status:
-        "builder-elements-inspection-success",
+        "builder-text-edited",
+      verified: true,
+      saved: false,
+      published: false,
+      selector,
+      beforeText,
+      afterText
+    });
+  }
 
-      verified:
-        true,
 
-      readOnly:
-        true,
+  async builderLastSavedText(
+    frame
+  ) {
+    try {
+      return await frame.evaluate(
+        () => {
+          const text =
+            (
+              document.body?.innerText ||
+              ""
+            );
 
-      builder: {
-        outerUrl:
-          page.url(),
+          const match =
+            text.match(
+              /Last saved[^\\n]*/i
+            );
 
-        contentFrameUrl:
-          frame.url(),
+          return match
+            ? match[0].trim()
+            : "";
+        }
+      );
 
-        currentFunnel:
-          await this.storage.get(
-            "currentFunnelName"
-          ) || null,
+    } catch {
+      return "";
+    }
+  }
 
-        currentStep:
-          await this.storage.get(
-            "currentStepName"
-          ) || null,
 
-        elements
+  async saveBuilder() {
+    const {
+      frame
+    } =
+      await this.getBuilderContext();
+
+    const selector =
+      "#pg-funnel-builder__btn--save";
+
+    const button =
+      await frame.$(
+        selector
+      );
+
+    if (!button) {
+      return json({
+        status:
+          "builder-save-button-not-found",
+        selector
+      }, 404);
+    }
+
+    const before =
+      await this.builderLastSavedText(
+        frame
+      );
+
+    await button.click();
+
+    /*
+     * HighLevel can take a moment to persist.
+     */
+    await sleep(2500);
+
+    const after =
+      await this.builderLastSavedText(
+        frame
+      );
+
+    const saveButtonExists =
+      Boolean(
+        await frame.$(
+          selector
+        )
+      );
+
+    if (!saveButtonExists) {
+      return json({
+        status:
+          "builder-save-not-verified",
+        message:
+          "Save was clicked but the builder state could not be verified."
+      }, 409);
+    }
+
+    await this.storage.put(
+      "builderHasUnsavedChanges",
+      false
+    );
+
+    await this.storage.put(
+      "builderLastSavedAt",
+      new Date().toISOString()
+    );
+
+    return json({
+      status:
+        "builder-saved",
+      verified: true,
+      published: false,
+      previousSaveLabel:
+        before || null,
+      currentSaveLabel:
+        after || null
+    });
+  }
+
+
+  async publishBuilder(request) {
+    const args =
+      await this.body(request);
+
+    if (
+      args.confirm !== true
+    ) {
+      return json({
+        status:
+          "publish-confirmation-required",
+        message:
+          "Publishing changes the live funnel. Call again with confirm=true."
+      }, 409);
+    }
+
+    const {
+      frame
+    } =
+      await this.getBuilderContext();
+
+    const selector =
+      "#pg-funnel-builder__btn--publish";
+
+    const publishButton =
+      await frame.$(
+        selector
+      );
+
+    if (!publishButton) {
+      return json({
+        status:
+          "builder-publish-button-not-found",
+        selector
+      }, 404);
+    }
+
+    await publishButton.click();
+
+    await sleep(1200);
+
+    /*
+     * If HighLevel displays a confirmation dialog,
+     * locate a visible confirmation button.
+     */
+    const confirmation =
+      await frame.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim()
+            .toLowerCase();
+
+        const buttons =
+          Array.from(
+            document.querySelectorAll(
+              'button,[role="button"]'
+            )
+          );
+
+        const visible = el => {
+          const rect =
+            el.getBoundingClientRect();
+
+          const style =
+            getComputedStyle(el);
+
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.display !== "none" &&
+            style.visibility !== "hidden"
+          );
+        };
+
+        const candidates =
+          buttons
+            .filter(visible)
+            .map((el, index) => ({
+              index,
+              text:
+                clean(
+                  el.innerText ||
+                  el.textContent ||
+                  el.getAttribute(
+                    "aria-label"
+                  )
+                )
+            }));
+
+        const match =
+          candidates.find(
+            item =>
+              item.text ===
+                "publish" ||
+              item.text ===
+                "confirm" ||
+              item.text ===
+                "publish changes"
+          );
+
+        return match || null;
+      });
+
+    if (confirmation) {
+      const buttons =
+        await frame.$$(
+          'button,[role="button"]'
+        );
+
+      if (
+        buttons[
+          confirmation.index
+        ]
+      ) {
+        await buttons[
+          confirmation.index
+        ].click();
+
+        await sleep(2500);
       }
+    }
+
+    /*
+     * Verify the page is still in the builder and
+     * the live indicator remains present.
+     */
+    const result =
+      await frame.evaluate(() => {
+        const body =
+          (
+            document.body?.innerText ||
+            ""
+          );
+
+        return {
+          hasLiveIndicator:
+            /•\\s*Live/i.test(
+              body
+            ) ||
+            /\\bLive\\b/i.test(
+              body
+            ),
+
+          hasPublishButton:
+            Boolean(
+              document.querySelector(
+                "#pg-funnel-builder__btn--publish"
+              )
+            ),
+
+          bodyPreview:
+            body.slice(
+              0,
+              1500
+            )
+        };
+      });
+
+    if (
+      !result.hasPublishButton
+    ) {
+      return json({
+        status:
+          "builder-publish-not-verified",
+        message:
+          "Publish was clicked but the builder could not be verified afterward.",
+        result
+      }, 409);
+    }
+
+    await this.storage.put(
+      "builderHasUnsavedChanges",
+      false
+    );
+
+    await this.storage.put(
+      "builderLastPublishedAt",
+      new Date().toISOString()
+    );
+
+    return json({
+      status:
+        "builder-published",
+      verified: true,
+      liveIndicator:
+        result.hasLiveIndicator
     });
   }
 
@@ -3025,19 +1876,15 @@ export class BrowserManager extends DurableObject {
         "loginSessionId"
       );
 
-    let reachable =
-      false;
+    let reachable = false;
 
     if (
       this.browser &&
       this.browser.isConnected()
     ) {
-      reachable =
-        true;
+      reachable = true;
 
-    } else if (
-      sessionId
-    ) {
+    } else if (sessionId) {
       try {
         this.browser =
           await puppeteer.connect(
@@ -3048,23 +1895,17 @@ export class BrowserManager extends DurableObject {
         reachable =
           Boolean(
             this.browser &&
-            this.browser
-              .isConnected()
+            this.browser.isConnected()
           );
 
       } catch {
-        reachable =
-          false;
+        reachable = false;
       }
     }
 
+    let builderOpen = false;
 
-    let builderOpen =
-      false;
-
-    if (
-      reachable
-    ) {
+    if (reachable) {
       try {
         builderOpen =
           Boolean(
@@ -3072,121 +1913,109 @@ export class BrowserManager extends DurableObject {
               this.browser
             )
           );
-
       } catch {}
     }
 
-
     return json({
-      status:
-        "ok",
-
+      status: "ok",
       sessionId:
-        sessionId ||
-        null,
-
+        sessionId || null,
       browserReachable:
         reachable,
-
       currentFunnel:
         await this.storage.get(
           "currentFunnelName"
         ) || null,
-
       currentStep:
         await this.storage.get(
           "currentStepName"
         ) || null,
-
-      currentFunnelUrl:
-        await this.storage.get(
-          "currentFunnelUrl"
-        ) || null,
-
       builderUrl:
         await this.storage.get(
           "builderUrl"
         ) || null,
-
-      builderOpen
+      builderOpen,
+      builderHasUnsavedChanges:
+        await this.storage.get(
+          "builderHasUnsavedChanges"
+        ) || false,
+      builderLastSavedAt:
+        await this.storage.get(
+          "builderLastSavedAt"
+        ) || null,
+      builderLastPublishedAt:
+        await this.storage.get(
+          "builderLastPublishedAt"
+        ) || null
     });
   }
 
 
   async fetch(request) {
     const url =
-      new URL(
-        request.url
-      );
+      new URL(request.url);
 
     try {
-      switch (
-        url.pathname
-      ) {
+      switch (url.pathname) {
 
         case "/api/login/start":
           return await this.startLoginBrowser();
 
-
         case "/api/status":
           return await this.status();
 
-
         case "/api/sites/inspect":
           return await this.inspectFunnels();
-
 
         case "/api/funnel/open":
           return await this.openFunnel(
             request
           );
 
-
         case "/api/funnel/steps":
           return await this.listFunnelSteps();
-
 
         case "/api/funnel/step/inspect":
           return await this.inspectFunnelStep(
             request
           );
 
-
         case "/api/builder/open":
           return await this.openPageBuilder();
-
 
         case "/api/builder/inspect":
           return await this.inspectPageBuilder();
 
-
         case "/api/builder/elements":
           return await this.inspectBuilderElements();
 
+        case "/api/builder/edit-text":
+          return await this.editBuilderText(
+            request
+          );
+
+        case "/api/builder/save":
+          return await this.saveBuilder();
+
+        case "/api/builder/publish":
+          return await this.publishBuilder(
+            request
+          );
 
         default:
-          return json(
-            {
-              error:
-                "Unknown action"
-            },
-            404
-          );
+          return json({
+            error: "Unknown action"
+          }, 404);
       }
 
     } catch (error) {
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            error instanceof Error
-              ? error.message
-              : String(error)
-        },
-        500
-      );
+      return json({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      }, 500);
     }
   }
 }
