@@ -1,99 +1,86 @@
-import puppeteer from "@cloudflare/puppeteer";
-
-const PREFERRED_SESSION_ID = "8be56cfd-c890-4cab-b933-16c4a28e3fb1";
+import { DurableObject } from "cloudflare:workers";
+import * as puppeteer from "@cloudflare/puppeteer";
 
 export default {
   async fetch(request, env) {
-    let browser;
+    const obj = env.BROWSER_MANAGER.getByName("cga-ghl");
+    return obj.fetch(request);
+  }
+};
 
+export class BrowserManager extends DurableObject {
+  browser;
+  storage;
+
+  constructor(state, env) {
+    super(state, env);
+    this.storage = state.storage;
+  }
+
+  async ensureBrowser() {
+    if (!this.browser || !this.browser.isConnected()) {
+      this.browser = await puppeteer.launch(this.env.BROWSER, {
+        keep_alive: 600000
+      });
+    }
+
+    return this.browser;
+  }
+
+  async keepAlive() {
+    const currentAlarm = await this.storage.getAlarm();
+
+    if (currentAlarm == null) {
+      await this.storage.setAlarm(Date.now() + 5 * 60 * 1000);
+    }
+  }
+
+  async fetch(request) {
     try {
-      const sessions = await puppeteer.sessions(env.BROWSER);
+      const browser = await this.ensureBrowser();
 
-      // Prefer the session you logged into manually.
-      // If it has expired, try another available Browser Run session.
-      let session = sessions.find(
-        (s) =>
-          s.sessionId === PREFERRED_SESSION_ID &&
-          !s.connectionId
-      );
+      let pages = await browser.pages();
 
-      if (!session) {
-        session = sessions.find((s) => !s.connectionId);
+      let page =
+        pages.find((p) =>
+          p.url().includes("app.gohighlevel.com")
+        ) || pages[0];
+
+      if (!page) {
+        page = await browser.newPage();
       }
 
-      if (!session) {
-        return Response.json(
-          {
-            status: "no-session",
-            message:
-              "No available Browser Run session was found. Create/login to a new Live Session first."
-          },
-          { status: 404 }
-        );
+      if (
+        !page.url() ||
+        page.url() === "about:blank"
+      ) {
+        await page.goto("https://app.gohighlevel.com", {
+          waitUntil: "domcontentloaded",
+          timeout: 30000
+        });
       }
 
-      browser = await puppeteer.connect(
-        env.BROWSER,
-        session.sessionId
-      );
+      await this.keepAlive();
 
-      const pages = await browser.pages();
+      pages = await browser.pages();
 
       const pageInfo = [];
 
-      for (const page of pages) {
+      for (const p of pages) {
         pageInfo.push({
-          title: await page.title().catch(() => ""),
-          url: page.url()
+          title: await p.title().catch(() => ""),
+          url: p.url()
         });
       }
-
-      const ghlPage =
-        pages.find((page) =>
-          page.url().includes("app.gohighlevel.com")
-        ) || pages[0];
-
-      if (!ghlPage) {
-        browser.disconnect();
-
-        return Response.json({
-          status: "connected",
-          sessionId: session.sessionId,
-          authenticated: false,
-          pages: pageInfo,
-          message: "Connected, but no HighLevel tab was found."
-        });
-      }
-
-      const currentUrl = ghlPage.url();
-      const title = await ghlPage.title();
-
-      // This is only a diagnostic check.
-      // We are NOT editing anything yet.
-      const likelyLoginPage =
-        currentUrl.toLowerCase().includes("login") ||
-        currentUrl.toLowerCase().includes("signin");
-
-      browser.disconnect();
 
       return Response.json({
-        status: "connected",
-        sessionId: session.sessionId,
-        authenticated: !likelyLoginPage,
-        highLevel: {
-          title,
-          url: currentUrl
-        },
+        status: "browser-running",
+        message:
+          "Persistent CGA HighLevel browser session is running.",
         pages: pageInfo
       });
 
     } catch (error) {
-      if (browser) {
-        try {
-          browser.disconnect();
-        } catch {}
-      }
-
       return Response.json(
         {
           status: "error",
@@ -106,4 +93,24 @@ export default {
       );
     }
   }
-};
+
+  async alarm() {
+    try {
+      if (this.browser && this.browser.isConnected()) {
+        // Sending a browser command prevents Browser Run becoming idle.
+        await this.browser.version();
+
+        await this.storage.setAlarm(
+          Date.now() + 5 * 60 * 1000
+        );
+      }
+    } catch (error) {
+      console.log(
+        "Browser keep-alive failed:",
+        error instanceof Error
+          ? error.message
+          : String(error)
+      );
+    }
+  }
+}
