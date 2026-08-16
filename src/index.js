@@ -22,24 +22,21 @@ function controlPage() {
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 800px;
+      max-width: 820px;
       margin: 40px auto;
       padding: 0 20px;
     }
-
     input {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
       margin: 10px 0 20px;
     }
-
     button {
       padding: 12px 16px;
       margin: 5px;
       cursor: pointer;
     }
-
     pre {
       background: #f4f4f4;
       padding: 15px;
@@ -54,7 +51,7 @@ function controlPage() {
 <h1>CGA HighLevel Browser</h1>
 
 <p>
-Uses the authenticated Cloudflare Browser Run session directly.
+Connects directly to the current authenticated Cloudflare Browser Run session.
 </p>
 
 <label><strong>Browser Admin Key</strong></label>
@@ -78,11 +75,11 @@ Check Status
 <h3>HighLevel</h3>
 
 <button onclick="run('/api/inspect-current')">
-Inspect Logged-In HighLevel
+Inspect Current HighLevel Page
 </button>
 
 <button onclick="run('/api/sites/inspect')">
-Open Sites & List Funnels
+Inspect Funnels Page
 </button>
 
 <pre id="result">Ready</pre>
@@ -113,8 +110,7 @@ async function run(path) {
       JSON.stringify(data, null, 2);
 
   } catch (error) {
-    result.textContent =
-      String(error);
+    result.textContent = String(error);
   }
 }
 </script>
@@ -129,61 +125,36 @@ async function run(path) {
 }
 
 export default {
-
   async fetch(request, env) {
-
-    const url =
-      new URL(request.url);
+    const url = new URL(request.url);
 
     if (url.pathname === "/") {
       return controlPage();
     }
 
-    if (
-      !url.pathname.startsWith("/api/")
-    ) {
-      return json(
-        { error: "Not found" },
-        404
-      );
+    if (!url.pathname.startsWith("/api/")) {
+      return json({ error: "Not found" }, 404);
     }
 
     if (!env.BROWSER_ADMIN_KEY) {
-      return json(
-        {
-          error:
-            "BROWSER_ADMIN_KEY is not configured."
-        },
-        503
-      );
+      return json({
+        error: "BROWSER_ADMIN_KEY is not configured."
+      }, 503);
     }
 
     const suppliedKey =
-      request.headers.get(
-        "x-admin-key"
-      );
+      request.headers.get("x-admin-key");
 
-    if (
-      suppliedKey !==
-      env.BROWSER_ADMIN_KEY
-    ) {
-      return json(
-        { error: "Unauthorized" },
-        401
-      );
+    if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
+      return json({ error: "Unauthorized" }, 401);
     }
 
     if (request.method !== "POST") {
-      return json(
-        { error: "Method not allowed" },
-        405
-      );
+      return json({ error: "Method not allowed" }, 405);
     }
 
     const object =
-      env.BROWSER_MANAGER.getByName(
-        "cga-ghl"
-      );
+      env.BROWSER_MANAGER.getByName("cga-ghl");
 
     return object.fetch(request);
   }
@@ -193,22 +164,15 @@ export default {
 export class BrowserManager extends DurableObject {
 
   constructor(state, env) {
-
     super(state, env);
 
-    this.storage =
-      state.storage;
-
-    this.env =
-      env;
-
-    this.browser =
-      null;
+    this.storage = state.storage;
+    this.env = env;
+    this.browser = null;
   }
 
 
   async startLoginBrowser() {
-
     if (
       this.browser &&
       this.browser.isConnected()
@@ -236,10 +200,8 @@ export class BrowserManager extends DurableObject {
     await page.goto(
       "https://app.gohighlevel.com/",
       {
-        waitUntil:
-          "domcontentloaded",
-        timeout:
-          30000
+        waitUntil: "domcontentloaded",
+        timeout: 30000
       }
     );
 
@@ -252,22 +214,16 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status:
-        "login-browser-ready",
-
+      status: "login-browser-ready",
       sessionId,
-
-      pageUrl:
-        page.url(),
-
+      pageUrl: page.url(),
       message:
         "Open this exact session in Cloudflare Browser Run Live Sessions and log into HighLevel."
     });
   }
 
 
-  async connectToLoginBrowser() {
-
+  async connectToBrowser() {
     if (
       this.browser &&
       this.browser.isConnected()
@@ -285,7 +241,6 @@ export class BrowserManager extends DurableObject {
     }
 
     try {
-
       this.browser =
         await puppeteer.connect(
           this.env.BROWSER,
@@ -293,16 +248,108 @@ export class BrowserManager extends DurableObject {
         );
 
       return this.browser;
-
     } catch {
-
       return null;
-
     }
   }
 
 
-  async inspectPage(page) {
+  async getHighLevelPages(browser) {
+    const pages =
+      await browser.pages();
+
+    const results = [];
+
+    for (let index = 0; index < pages.length; index++) {
+      const page = pages[index];
+      const url = page.url();
+
+      if (
+        url.includes(
+          "app.gohighlevel.com"
+        )
+      ) {
+        results.push({
+          index,
+          page,
+          url
+        });
+      }
+    }
+
+    return results;
+  }
+
+
+  async chooseCurrentHighLevelPage(browser) {
+    const highLevelPages =
+      await this.getHighLevelPages(browser);
+
+    if (!highLevelPages.length) {
+      return null;
+    }
+
+    /*
+     * Prefer the Funnels/Sites page if it is already open.
+     */
+    const funnelsPage =
+      highLevelPages.find(({ url }) =>
+        url.includes(
+          "/funnels-websites/"
+        )
+      );
+
+    if (funnelsPage) {
+      return funnelsPage.page;
+    }
+
+    /*
+     * Prefer a location page next.
+     */
+    const locationPage =
+      highLevelPages.find(({ url }) =>
+        url.includes(
+          "/v2/location/"
+        )
+      );
+
+    if (locationPage) {
+      return locationPage.page;
+    }
+
+    /*
+     * Otherwise just use the last HighLevel page.
+     */
+    return highLevelPages[
+      highLevelPages.length - 1
+    ].page;
+  }
+
+
+  async inspectCurrentPage() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status: "browser-unavailable",
+        message:
+          "The stored Browser Run session cannot currently be reached."
+      }, 409);
+    }
+
+    const page =
+      await this.chooseCurrentHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status: "no-highlevel-page",
+        message:
+          "No HighLevel tab is currently open in the Browser Run session."
+      }, 409);
+    }
 
     await page.waitForSelector(
       "body",
@@ -311,248 +358,120 @@ export class BrowserManager extends DurableObject {
 
     await new Promise(
       resolve =>
-        setTimeout(resolve, 2000)
+        setTimeout(resolve, 1500)
     );
 
-    return await page.evaluate(() => {
+    const inspection =
+      await page.evaluate(() => {
 
-      const clean = value =>
-        String(value || "")
-          .replace(/\\s+/g, " ")
-          .trim();
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
 
-      const bodyText =
-        clean(
-          document.body?.innerText || ""
-        );
+        const bodyText =
+          clean(
+            document.body?.innerText || ""
+          );
 
-      const bodyLower =
-        bodyText.toLowerCase();
-
-      const hasPasswordField =
-        Boolean(
-          document.querySelector(
-            'input[type="password"]'
-          )
-        );
-
-      const signals = [
-        "dashboard",
-        "conversations",
-        "contacts",
-        "opportunities",
-        "calendars",
-        "marketing",
-        "automation",
-        "sites"
-      ];
-
-      const signalCount =
-        signals.filter(
-          signal =>
-            bodyLower.includes(signal)
-        ).length;
-
-      const navigation =
-        Array.from(
-          document.querySelectorAll(
-            'a, button, [role="button"], [role="link"]'
-          )
-        )
-        .map(element => ({
-          tag:
-            element.tagName.toLowerCase(),
-
-          text:
-            clean(
-              element.innerText ||
-              element.textContent ||
-              element.getAttribute(
-                "aria-label"
-              )
-            ),
-
-          href:
-            element.tagName === "A"
-              ? element.href
-              : "",
-
-          ariaLabel:
-            clean(
-              element.getAttribute(
-                "aria-label"
-              )
+        const links =
+          Array.from(
+            document.querySelectorAll(
+              "a[href]"
             )
-        }))
-        .filter(item =>
-          item.text ||
-          item.href ||
-          item.ariaLabel
-        );
+          )
+          .map(link => ({
+            text:
+              clean(
+                link.innerText ||
+                link.textContent
+              ),
+            href:
+              link.href
+          }))
+          .filter(link =>
+            link.text ||
+            link.href
+          );
 
-      return {
-        title:
-          document.title,
+        return {
+          title:
+            document.title,
 
-        url:
-          window.location.href,
+          url:
+            window.location.href,
 
-        authenticated:
-          signalCount >= 2 &&
-          !hasPasswordField,
+          bodyPreview:
+            bodyText.slice(0, 5000),
 
-        signalCount,
-
-        bodyPreview:
-          bodyText.slice(0, 2500),
-
-        navigation:
-          navigation.slice(0, 250)
-      };
-    });
-  }
-
-
-  async findAuthenticatedPage(browser) {
-
-    const pages =
-      await browser.pages();
-
-    for (const page of pages) {
-
-      try {
-
-        const inspection =
-          await this.inspectPage(page);
-
-        if (
-          inspection.authenticated
-        ) {
-          return {
-            page,
-            inspection
-          };
-        }
-
-      } catch {}
-    }
-
-    return null;
-  }
-
-
-  async inspectCurrentHighLevel() {
-
-    const browser =
-      await this.connectToLoginBrowser();
-
-    if (!browser) {
-
-      return json(
-        {
-          status:
-            "browser-unavailable",
-
-          message:
-            "The authenticated Browser Run session cannot currently be reached."
-        },
-        409
-      );
-    }
-
-    const found =
-      await this.findAuthenticatedPage(
-        browser
-      );
-
-    if (!found) {
-
-      return json(
-        {
-          status:
-            "not-authenticated",
-
-          message:
-            "No authenticated HighLevel page was found in the current browser session."
-        },
-        409
-      );
-    }
+          links:
+            links.slice(0, 250)
+        };
+      });
 
     return json({
-      status:
-        "inspection-success",
-
-      authenticated:
-        true,
-
+      status: "current-page-inspection-success",
       sessionId:
         await this.storage.get(
           "loginSessionId"
         ),
-
-      highLevel:
-        found.inspection
+      highLevel: inspection
     });
   }
 
 
-  async inspectSites() {
-
+  async inspectFunnels() {
     const browser =
-      await this.connectToLoginBrowser();
+      await this.connectToBrowser();
 
     if (!browser) {
-
-      return json(
-        {
-          status:
-            "browser-unavailable",
-
-          message:
-            "The authenticated Browser Run session cannot currently be reached."
-        },
-        409
-      );
+      return json({
+        status: "browser-unavailable",
+        message:
+          "The stored Browser Run session cannot currently be reached."
+      }, 409);
     }
 
-    const found =
-      await this.findAuthenticatedPage(
+    let page =
+      await this.chooseCurrentHighLevelPage(
         browser
       );
 
-    if (!found) {
-
-      return json(
-        {
-          status:
-            "not-authenticated",
-
-          message:
-            "No authenticated HighLevel page was found."
-        },
-        409
-      );
+    if (!page) {
+      return json({
+        status: "no-highlevel-page",
+        message:
+          "No HighLevel tab is currently open."
+      }, 409);
     }
 
-    const page =
-      found.page;
-
-    const sitesUrl =
+    const funnelsUrl =
       "https://app.gohighlevel.com/v2/location/" +
       LOCATION_ID +
       "/funnels-websites/funnels";
 
-    await page.goto(
-      sitesUrl,
-      {
-        waitUntil:
-          "domcontentloaded",
-        timeout:
-          30000
-      }
-    );
+    /*
+     * If not already on the funnels page,
+     * navigate there directly.
+     */
+    if (
+      !page.url().includes(
+        "/funnels-websites/funnels"
+      )
+    ) {
+      await page.goto(
+        funnelsUrl,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 30000
+        }
+      );
+    }
 
+    /*
+     * Wait for the SPA to finish replacing
+     * its loading state.
+     */
     try {
       await page.waitForFunction(
         () => {
@@ -562,19 +481,11 @@ export class BrowserManager extends DurableObject {
               .trim()
               .toLowerCase();
 
-          const stillLoading =
-            text.includes(
-              "loading fresh data"
-            );
-
-          const usefulElements =
-            document.querySelectorAll(
-              'a[href], button, tr, [role="row"], [class*="card"]'
-            ).length;
-
           return (
-            !stillLoading &&
-            usefulElements > 5
+            !text.includes(
+              "loading fresh data"
+            ) &&
+            text.length > 50
           );
         },
         {
@@ -583,7 +494,7 @@ export class BrowserManager extends DurableObject {
         }
       );
     } catch {
-      // Continue and inspect whatever HighLevel rendered.
+      // Continue with whatever is rendered.
     }
 
     await new Promise(
@@ -604,56 +515,7 @@ export class BrowserManager extends DurableObject {
             document.body?.innerText || ""
           );
 
-        const items =
-          Array.from(
-            document.querySelectorAll(
-              'a, button, [role="button"], [role="link"], tr, [role="row"], [class*="card"]'
-            )
-          )
-          .map(element => ({
-
-            tag:
-              element.tagName.toLowerCase(),
-
-            text:
-              clean(
-                element.innerText ||
-                element.textContent
-              ),
-
-            href:
-              element.tagName === "A"
-                ? element.href
-                : ""
-
-          }))
-          .filter(item =>
-            item.text ||
-            item.href
-          );
-
-        const likelyFunnels =
-          items.filter(item => {
-
-            const text =
-              (
-                item.text +
-                " " +
-                item.href
-              ).toLowerCase();
-
-            return (
-              text.includes("funnel") ||
-              text.includes("website") ||
-              text.includes("cheshire") ||
-              text.includes("golf") ||
-              text.includes("coaching") ||
-              text.includes("jo.")
-            );
-
-          });
-
-        const allLinks =
+        const links =
           Array.from(
             document.querySelectorAll(
               "a[href]"
@@ -665,7 +527,6 @@ export class BrowserManager extends DurableObject {
                 link.innerText ||
                 link.textContent
               ),
-
             href:
               link.href
           }))
@@ -674,8 +535,74 @@ export class BrowserManager extends DurableObject {
             link.href
           );
 
-        return {
+        const buttons =
+          Array.from(
+            document.querySelectorAll(
+              'button, [role="button"]'
+            )
+          )
+          .map(button => ({
+            text:
+              clean(
+                button.innerText ||
+                button.textContent ||
+                button.getAttribute(
+                  "aria-label"
+                )
+              )
+          }))
+          .filter(button =>
+            button.text
+          );
 
+        const rows =
+          Array.from(
+            document.querySelectorAll(
+              'tr, [role="row"], [class*="card"]'
+            )
+          )
+          .map(row => ({
+            text:
+              clean(
+                row.innerText ||
+                row.textContent
+              )
+          }))
+          .filter(row =>
+            row.text
+          );
+
+        const likelyFunnels =
+          [
+            ...links.map(item => ({
+              type: "link",
+              ...item
+            })),
+
+            ...rows.map(item => ({
+              type: "row",
+              ...item
+            }))
+          ]
+          .filter(item => {
+            const text =
+              (
+                item.text +
+                " " +
+                (item.href || "")
+              ).toLowerCase();
+
+            return (
+              text.includes("funnel") ||
+              text.includes("website") ||
+              text.includes("golf") ||
+              text.includes("coaching") ||
+              text.includes("cheshire") ||
+              text.includes("jo.")
+            );
+          });
+
+        return {
           title:
             document.title,
 
@@ -683,7 +610,7 @@ export class BrowserManager extends DurableObject {
             window.location.href,
 
           bodyPreview:
-            bodyText.slice(0, 8000),
+            bodyText.slice(0, 10000),
 
           likelyFunnels:
             likelyFunnels.slice(
@@ -691,56 +618,53 @@ export class BrowserManager extends DurableObject {
               200
             ),
 
-          allLinks:
-            allLinks.slice(
+          links:
+            links.slice(
               0,
               300
-            )
+            ),
 
+          buttons:
+            buttons.slice(
+              0,
+              200
+            ),
+
+          rows:
+            rows.slice(
+              0,
+              200
+            )
         };
       });
 
     return json({
-
-      status:
-        "sites-inspection-success",
-
-      readOnly:
-        true,
-
+      status: "funnels-inspection-success",
+      readOnly: true,
       sessionId:
         await this.storage.get(
           "loginSessionId"
         ),
-
-      sites:
-        result
+      funnels: result
     });
   }
 
 
   async status() {
-
     const sessionId =
       await this.storage.get(
         "loginSessionId"
       );
 
-    let reachable =
-      false;
+    let reachable = false;
 
     if (
       this.browser &&
       this.browser.isConnected()
     ) {
-
-      reachable =
-        true;
-
+      reachable = true;
     } else if (sessionId) {
-
       try {
-
         this.browser =
           await puppeteer.connect(
             this.env.BROWSER,
@@ -752,84 +676,54 @@ export class BrowserManager extends DurableObject {
             this.browser &&
             this.browser.isConnected()
           );
-
       } catch {
-
-        reachable =
-          false;
-
+        reachable = false;
       }
     }
 
     return json({
-
-      status:
-        "ok",
-
+      status: "ok",
       sessionId:
         sessionId || null,
-
       browserReachable:
         reachable
-
     });
   }
 
 
   async fetch(request) {
-
     const url =
       new URL(request.url);
 
     try {
-
       switch (url.pathname) {
 
         case "/api/login/start":
-
           return await this.startLoginBrowser();
 
-
-        case "/api/inspect-current":
-
-          return await this.inspectCurrentHighLevel();
-
-
-        case "/api/sites/inspect":
-
-          return await this.inspectSites();
-
-
         case "/api/status":
-
           return await this.status();
 
+        case "/api/inspect-current":
+          return await this.inspectCurrentPage();
+
+        case "/api/sites/inspect":
+          return await this.inspectFunnels();
 
         default:
-
-          return json(
-            {
-              error:
-                "Unknown action"
-            },
-            404
-          );
+          return json({
+            error: "Unknown action"
+          }, 404);
       }
 
     } catch (error) {
-
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            error instanceof Error
-              ? error.message
-              : String(error)
-        },
-        500
-      );
+      return json({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      }, 500);
     }
   }
 }
