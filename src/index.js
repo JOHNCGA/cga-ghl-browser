@@ -31,23 +31,27 @@ function controlPage() {
       margin: 40px auto;
       padding: 0 20px;
     }
+
     input {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
       margin: 8px 0 15px;
     }
+
     button {
       padding: 11px 15px;
       margin: 4px;
       cursor: pointer;
     }
+
     pre {
       background: #f4f4f4;
       padding: 15px;
       white-space: pre-wrap;
       word-break: break-word;
     }
+
     section {
       margin: 25px 0;
       padding-bottom: 15px;
@@ -113,6 +117,18 @@ function controlPage() {
   </button>
 </section>
 
+<section>
+  <h3>Page Builder</h3>
+
+  <button onclick="run('/api/builder/open')">
+    Open Page Builder
+  </button>
+
+  <button onclick="run('/api/builder/inspect')">
+    Inspect Page Builder
+  </button>
+</section>
+
 <pre id="result">Ready</pre>
 
 <script>
@@ -146,7 +162,9 @@ async function runWithBody(path, body) {
     });
 
     const data = await response.json();
-    result.textContent = JSON.stringify(data, null, 2);
+
+    result.textContent =
+      JSON.stringify(data, null, 2);
 
   } catch (error) {
     result.textContent = String(error);
@@ -163,6 +181,7 @@ async function runWithBody(path, body) {
   });
 }
 
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -172,27 +191,48 @@ export default {
     }
 
     if (!url.pathname.startsWith("/api/")) {
-      return json({ error: "Not found" }, 404);
+      return json(
+        { error: "Not found" },
+        404
+      );
     }
 
     if (!env.BROWSER_ADMIN_KEY) {
-      return json({
-        error: "BROWSER_ADMIN_KEY is not configured."
-      }, 503);
+      return json(
+        {
+          error:
+            "BROWSER_ADMIN_KEY is not configured."
+        },
+        503
+      );
     }
 
-    const suppliedKey = request.headers.get("x-admin-key");
+    const suppliedKey =
+      request.headers.get(
+        "x-admin-key"
+      );
 
-    if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
-      return json({ error: "Unauthorized" }, 401);
+    if (
+      suppliedKey !==
+      env.BROWSER_ADMIN_KEY
+    ) {
+      return json(
+        { error: "Unauthorized" },
+        401
+      );
     }
 
     if (request.method !== "POST") {
-      return json({ error: "Method not allowed" }, 405);
+      return json(
+        { error: "Method not allowed" },
+        405
+      );
     }
 
     const object =
-      env.BROWSER_MANAGER.getByName("cga-ghl");
+      env.BROWSER_MANAGER.getByName(
+        "cga-ghl"
+      );
 
     return object.fetch(request);
   }
@@ -220,20 +260,25 @@ export class BrowserManager extends DurableObject {
 
 
   async startLoginBrowser() {
-    if (this.browser && this.browser.isConnected()) {
+    if (
+      this.browser &&
+      this.browser.isConnected()
+    ) {
       try {
         await this.browser.close();
       } catch {}
     }
 
-    this.browser = await puppeteer.launch(
-      this.env.BROWSER,
-      {
-        keep_alive: 600000
-      }
-    );
+    this.browser =
+      await puppeteer.launch(
+        this.env.BROWSER,
+        {
+          keep_alive: 600000
+        }
+      );
 
-    const pages = await this.browser.pages();
+    const pages =
+      await this.browser.pages();
 
     const page =
       pages[0] ||
@@ -242,8 +287,10 @@ export class BrowserManager extends DurableObject {
     await page.goto(
       `${GHL_BASE}/`,
       {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
+        waitUntil:
+          "domcontentloaded",
+        timeout:
+          30000
       }
     );
 
@@ -256,20 +303,29 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status: "login-browser-ready",
+      status:
+        "login-browser-ready",
+
       sessionId,
-      pageUrl: page.url()
+
+      pageUrl:
+        page.url()
     });
   }
 
 
   async connectToBrowser() {
-    if (this.browser && this.browser.isConnected()) {
+    if (
+      this.browser &&
+      this.browser.isConnected()
+    ) {
       return this.browser;
     }
 
     const sessionId =
-      await this.storage.get("loginSessionId");
+      await this.storage.get(
+        "loginSessionId"
+      );
 
     if (!sessionId) {
       return null;
@@ -291,7 +347,8 @@ export class BrowserManager extends DurableObject {
 
 
   async highLevelPages(browser) {
-    const pages = await browser.pages();
+    const pages =
+      await browser.pages();
 
     return pages.filter(
       page =>
@@ -304,19 +361,45 @@ export class BrowserManager extends DurableObject {
 
   async chooseHighLevelPage(browser) {
     const pages =
-      await this.highLevelPages(browser);
+      await this.highLevelPages(
+        browser
+      );
 
     if (!pages.length) {
       return null;
     }
 
+    /*
+     * Prefer a builder/editor tab if one exists.
+     */
+    for (const page of pages) {
+      try {
+        const builder =
+          await this.detectBuilder(
+            page
+          );
+
+        if (builder.isBuilder) {
+          return page;
+        }
+      } catch {}
+    }
+
+    /*
+     * Then prefer funnel detail/overview.
+     */
     const funnelDetail =
       pages.find(page => {
-        const url = page.url();
+        const url =
+          page.url();
 
         return (
-          url.includes("/funnels-websites/") &&
-          !url.endsWith("/funnels")
+          url.includes(
+            "/funnels-websites/"
+          ) &&
+          !url.endsWith(
+            "/funnels"
+          )
         );
       });
 
@@ -324,6 +407,9 @@ export class BrowserManager extends DurableObject {
       return funnelDetail;
     }
 
+    /*
+     * Then funnel list.
+     */
     const funnels =
       pages.find(
         page =>
@@ -336,6 +422,9 @@ export class BrowserManager extends DurableObject {
       return funnels;
     }
 
+    /*
+     * Then any HighLevel location page.
+     */
     const location =
       pages.find(
         page =>
@@ -344,28 +433,42 @@ export class BrowserManager extends DurableObject {
           )
       );
 
-    return location || pages[pages.length - 1];
+    return (
+      location ||
+      pages[pages.length - 1]
+    );
   }
 
 
-  async waitForHighLevel(page, timeout = 30000) {
+  async waitForHighLevel(
+    page,
+    timeout = 30000
+  ) {
     await page.waitForSelector(
       "body",
-      { timeout: 15000 }
+      {
+        timeout: 15000
+      }
     );
 
     try {
       await page.waitForFunction(
         () => {
           const text =
-            (document.body?.innerText || "")
+            (
+              document.body
+                ?.innerText ||
+              ""
+            )
               .replace(/\\s+/g, " ")
               .trim()
               .toLowerCase();
 
           return (
             text.length > 30 &&
-            !text.includes("loading fresh data")
+            !text.includes(
+              "loading fresh data"
+            )
           );
         },
         {
@@ -387,18 +490,37 @@ export class BrowserManager extends DurableObject {
           .trim();
 
       return {
-        title: document.title,
-        url: window.location.href,
+        title:
+          document.title,
+
+        url:
+          window.location.href,
+
         body:
           clean(
-            document.body?.innerText || ""
-          ).slice(0, 12000)
+            document.body
+              ?.innerText ||
+            ""
+          ).slice(
+            0,
+            12000
+          )
       };
     });
   }
 
 
-  async findFunnelClickPoint(page, funnelName) {
+  /*
+   * ---------------------------------------------------
+   * FUNNEL LIST
+   * ---------------------------------------------------
+   */
+
+
+  async findFunnelClickPoint(
+    page,
+    funnelName
+  ) {
     return page.evaluate(name => {
       const clean = value =>
         String(value || "")
@@ -406,7 +528,8 @@ export class BrowserManager extends DurableObject {
           .trim();
 
       const wanted =
-        clean(name).toLowerCase();
+        clean(name)
+          .toLowerCase();
 
       const rows =
         Array.from(
@@ -421,9 +544,12 @@ export class BrowserManager extends DurableObject {
             clean(
               element.innerText ||
               element.textContent
-            ).toLowerCase();
+            )
+              .toLowerCase();
 
-          return text.includes(wanted);
+          return text.includes(
+            wanted
+          );
         });
 
       if (!row) {
@@ -437,39 +563,39 @@ export class BrowserManager extends DurableObject {
           )
         );
 
-      /*
-       * Critical selector:
-       * exact funnel-name text + cursor:pointer.
-       * Your diagnostics proved this is the actual
-       * interactive HighLevel element.
-       */
       const target =
-        descendants.find(element => {
-          const text =
-            clean(
-              element.innerText ||
-              element.textContent
-            ).toLowerCase();
+        descendants.find(
+          element => {
+            const text =
+              clean(
+                element.innerText ||
+                element.textContent
+              )
+                .toLowerCase();
 
-          const style =
-            window.getComputedStyle(
+            const style =
+              window.getComputedStyle(
+                element
+              );
+
+            const rect =
               element
+                .getBoundingClientRect();
+
+            return (
+              text === wanted &&
+              style.cursor ===
+                "pointer" &&
+              rect.width > 20 &&
+              rect.height > 10
             );
-
-          const rect =
-            element.getBoundingClientRect();
-
-          return (
-            text === wanted &&
-            style.cursor === "pointer" &&
-            rect.width > 20 &&
-            rect.height > 10
-          );
-        });
+          }
+        );
 
       if (!target) {
         return {
           found: false,
+
           rowText:
             clean(
               row.innerText ||
@@ -484,13 +610,15 @@ export class BrowserManager extends DurableObject {
       });
 
       const rect =
-        target.getBoundingClientRect();
+        target
+          .getBoundingClientRect();
 
       return {
         found: true,
 
         tag:
-          target.tagName.toLowerCase(),
+          target.tagName
+            .toLowerCase(),
 
         text:
           clean(
@@ -499,9 +627,11 @@ export class BrowserManager extends DurableObject {
           ),
 
         cursor:
-          window.getComputedStyle(
-            target
-          ).cursor,
+          window
+            .getComputedStyle(
+              target
+            )
+            .cursor,
 
         x:
           rect.left +
@@ -522,227 +652,18 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async openFunnel(request) {
-    const args =
-      await this.body(request);
-
-    const name =
-      String(args.name || "").trim();
-
-    if (!name) {
-      return json({
-        status: "error",
-        message: "Funnel name is required."
-      }, 400);
-    }
-
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json({
-        status: "browser-unavailable"
-      }, 409);
-    }
-
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
-
-    if (!page) {
-      return json({
-        status: "no-highlevel-page"
-      }, 409);
-    }
-
-    const funnelsUrl =
-      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
-
-    /*
-     * Always start from the known funnel list.
-     */
-    if (page.url() !== funnelsUrl) {
-      await page.goto(
-        funnelsUrl,
-        {
-          waitUntil: "domcontentloaded",
-          timeout: 30000
-        }
-      );
-    }
-
-    await this.waitForHighLevel(page);
-
-    const before =
-      await this.getPageSnapshot(page);
-
-    const clickPoint =
-      await this.findFunnelClickPoint(
-        page,
-        name
-      );
-
-    if (!clickPoint || !clickPoint.found) {
-      return json({
-        status: "funnel-click-target-not-found",
-        funnelName: name,
-        clickPoint
-      }, 404);
-    }
-
-    /*
-     * REAL browser mouse click.
-     * This is the important change.
-     */
-    await page.mouse.move(
-      clickPoint.x,
-      clickPoint.y
-    );
-
-    await sleep(150);
-
-    await page.mouse.down();
-
-    await sleep(100);
-
-    await page.mouse.up();
-
-    /*
-     * Wait for HighLevel SPA navigation/detail render.
-     */
-    try {
-      await page.waitForFunction(
-        ({ oldUrl, funnelName }) => {
-          const clean = value =>
-            String(value || "")
-              .replace(/\\s+/g, " ")
-              .trim()
-              .toLowerCase();
-
-          const currentUrl =
-            window.location.href;
-
-          const body =
-            clean(
-              document.body?.innerText || ""
-            );
-
-          const listSignals =
-            body.includes("search for funnels") &&
-            body.includes("last updated") &&
-            body.includes("funnel steps");
-
-          const detailSignals =
-            (
-              body.includes(
-                clean(funnelName)
-              ) &&
-              !listSignals
-            ) ||
-            body.includes("add new step") ||
-            body.includes("funnel settings") ||
-            body.includes("preview");
-
-          return (
-            currentUrl !== oldUrl ||
-            detailSignals
-          );
-
-        },
-        {
-          timeout: 20000,
-          polling: 300
-        },
-        {
-          oldUrl: before.url,
-          funnelName: name
-        }
-      );
-
-    } catch {}
-
-    await sleep(1500);
-
-    const after =
-      await this.getPageSnapshot(page);
-
-    const stillOnList =
-      after.url.endsWith(
-        "/funnels-websites/funnels"
-      ) &&
-      after.body
-        .toLowerCase()
-        .includes(
-          "search for funnels"
-        );
-
-    if (stillOnList) {
-      return json({
-        status: "funnel-click-did-not-open",
-
-        funnelName: name,
-
-        message:
-          "The actual pointer-enabled funnel-name element received a real Puppeteer mouse click, but HighLevel still remained on the list.",
-
-        clickPoint,
-
-        before: {
-          url: before.url,
-          title: before.title
-        },
-
-        after: {
-          url: after.url,
-          title: after.title,
-          bodyPreview:
-            after.body.slice(
-              0,
-              3000
-            )
-        }
-      }, 409);
-    }
-
-    await this.storage.put(
-      "currentFunnelName",
-      name
-    );
-
-    await this.storage.put(
-      "currentFunnelUrl",
-      after.url
-    );
-
-    return json({
-      status: "funnel-opened",
-      verified: true,
-      funnelName: name,
-
-      clickTarget: clickPoint,
-
-      page: {
-        title: after.title,
-        url: after.url,
-        bodyPreview:
-          after.body.slice(
-            0,
-            8000
-          )
-      }
-    });
-  }
-
-
   async inspectFunnels() {
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status: "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     let page =
@@ -751,25 +672,36 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status: "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
     const funnelsUrl =
       `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
 
-    if (page.url() !== funnelsUrl) {
+    if (
+      page.url() !==
+      funnelsUrl
+    ) {
       await page.goto(
         funnelsUrl,
         {
-          waitUntil: "domcontentloaded",
-          timeout: 30000
+          waitUntil:
+            "domcontentloaded",
+          timeout:
+            30000
         }
       );
     }
 
-    await this.waitForHighLevel(page);
+    await this.waitForHighLevel(
+      page
+    );
 
     const data =
       await page.evaluate(() => {
@@ -784,34 +716,278 @@ export class BrowserManager extends DurableObject {
               'tr, [role="row"], [class*="card"]'
             )
           )
-          .map(row =>
-            clean(
-              row.innerText ||
-              row.textContent
+            .map(row =>
+              clean(
+                row.innerText ||
+                row.textContent
+              )
             )
-          )
-          .filter(Boolean);
+            .filter(Boolean);
 
         return {
-          title: document.title,
-          url: location.href,
+          title:
+            document.title,
+
+          url:
+            location.href,
 
           bodyPreview:
             clean(
-              document.body?.innerText ||
+              document.body
+                ?.innerText ||
               ""
-            ).slice(0, 8000),
+            ).slice(
+              0,
+              8000
+            ),
 
           rows
         };
       });
 
     return json({
-      status: "funnels-inspection-success",
-      readOnly: true,
-      funnels: data
+      status:
+        "funnels-inspection-success",
+
+      readOnly:
+        true,
+
+      funnels:
+        data
     });
   }
+
+
+  async openFunnel(request) {
+    const args =
+      await this.body(
+        request
+      );
+
+    const name =
+      String(
+        args.name || ""
+      ).trim();
+
+    if (!name) {
+      return json(
+        {
+          status:
+            "error",
+
+          message:
+            "Funnel name is required."
+        },
+        400
+      );
+    }
+
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
+    }
+
+    let page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
+    }
+
+    const funnelsUrl =
+      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
+
+    if (
+      page.url() !==
+      funnelsUrl
+    ) {
+      await page.goto(
+        funnelsUrl,
+        {
+          waitUntil:
+            "domcontentloaded",
+          timeout:
+            30000
+        }
+      );
+    }
+
+    await this.waitForHighLevel(
+      page
+    );
+
+    const before =
+      await this.getPageSnapshot(
+        page
+      );
+
+    const clickPoint =
+      await this.findFunnelClickPoint(
+        page,
+        name
+      );
+
+    if (
+      !clickPoint ||
+      !clickPoint.found
+    ) {
+      return json(
+        {
+          status:
+            "funnel-click-target-not-found",
+
+          funnelName:
+            name,
+
+          clickPoint
+        },
+        404
+      );
+    }
+
+    await page.mouse.move(
+      clickPoint.x,
+      clickPoint.y
+    );
+
+    await sleep(150);
+
+    await page.mouse.down();
+
+    await sleep(100);
+
+    await page.mouse.up();
+
+    try {
+      await page.waitForFunction(
+        oldUrl =>
+          window.location.href !==
+          oldUrl,
+        {
+          timeout:
+            20000,
+          polling:
+            300
+        },
+        before.url
+      );
+    } catch {}
+
+    await sleep(1500);
+
+    const after =
+      await this.getPageSnapshot(
+        page
+      );
+
+    const stillOnList =
+      after.url.endsWith(
+        "/funnels-websites/funnels"
+      ) &&
+      after.body
+        .toLowerCase()
+        .includes(
+          "search for funnels"
+        );
+
+    if (stillOnList) {
+      return json(
+        {
+          status:
+            "funnel-click-did-not-open",
+
+          funnelName:
+            name,
+
+          clickPoint,
+
+          before: {
+            url:
+              before.url,
+
+            title:
+              before.title
+          },
+
+          after: {
+            url:
+              after.url,
+
+            title:
+              after.title,
+
+            bodyPreview:
+              after.body.slice(
+                0,
+                3000
+              )
+          }
+        },
+        409
+      );
+    }
+
+    await this.storage.put(
+      "currentFunnelName",
+      name
+    );
+
+    await this.storage.put(
+      "currentFunnelUrl",
+      after.url
+    );
+
+    return json({
+      status:
+        "funnel-opened",
+
+      verified:
+        true,
+
+      funnelName:
+        name,
+
+      clickTarget:
+        clickPoint,
+
+      page: {
+        title:
+          after.title,
+
+        url:
+          after.url,
+
+        bodyPreview:
+          after.body.slice(
+            0,
+            8000
+          )
+      }
+    });
+  }
+
+
+  /*
+   * ---------------------------------------------------
+   * FUNNEL STEP
+   * ---------------------------------------------------
+   */
 
 
   async listFunnelSteps() {
@@ -819,9 +995,13 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status: "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const page =
@@ -830,12 +1010,18 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status: "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
-    await this.waitForHighLevel(page);
+    await this.waitForHighLevel(
+      page
+    );
 
     const result =
       await page.evaluate(() => {
@@ -850,39 +1036,50 @@ export class BrowserManager extends DurableObject {
               'a, button, tr, [role="row"], [role="button"], [role="link"], [class*="card"]'
             )
           )
-          .map(el => ({
-            tag:
-              el.tagName.toLowerCase(),
+            .map(el => ({
+              tag:
+                el.tagName
+                  .toLowerCase(),
 
-            text:
-              clean(
-                el.innerText ||
-                el.textContent
-              ),
+              text:
+                clean(
+                  el.innerText ||
+                  el.textContent
+                ),
 
-            href:
-              el.tagName === "A"
-                ? el.href
-                : ""
-          }))
-          .filter(
-            item =>
-              item.text ||
-              item.href
-          );
+              href:
+                el.tagName === "A"
+                  ? el.href
+                  : ""
+            }))
+            .filter(
+              item =>
+                item.text ||
+                item.href
+            );
 
         return {
-          title: document.title,
-          url: location.href,
+          title:
+            document.title,
+
+          url:
+            location.href,
 
           bodyPreview:
             clean(
-              document.body?.innerText ||
+              document.body
+                ?.innerText ||
               ""
-            ).slice(0, 10000),
+            ).slice(
+              0,
+              10000
+            ),
 
           candidates:
-            candidates.slice(0, 250)
+            candidates.slice(
+              0,
+              250
+            )
         };
       });
 
@@ -900,75 +1097,237 @@ export class BrowserManager extends DurableObject {
           "currentFunnelUrl"
         ),
 
-      readOnly: true,
+      readOnly:
+        true,
+
       result
     });
   }
 
 
-  async clickText(page, targetText) {
-    return page.evaluate(target => {
-      const clean = value =>
-        String(value || "")
-          .replace(/\\s+/g, " ")
-          .trim();
+  async findExactTextClickPoint(
+    page,
+    targetText
+  ) {
+    return page.evaluate(
+      target => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
 
-      const wanted =
-        clean(target).toLowerCase();
+        const wanted =
+          clean(target)
+            .toLowerCase();
 
-      const candidates =
-        Array.from(
-          document.querySelectorAll(
-            'a, button, [role="button"], [role="link"], div, span'
-          )
-        );
+        const elements =
+          Array.from(
+            document.querySelectorAll(
+              'button, a, [role="button"], [role="link"], div, span'
+            )
+          );
 
-      const exact =
-        candidates.find(el =>
-          clean(
-            el.innerText ||
-            el.textContent
-          ).toLowerCase() === wanted
-        );
+        const matches =
+          elements
+            .map(element => {
+              const text =
+                clean(
+                  element.innerText ||
+                  element.textContent ||
+                  element.getAttribute(
+                    "aria-label"
+                  )
+                );
 
-      if (!exact) {
-        return false;
-      }
+              const rect =
+                element
+                  .getBoundingClientRect();
 
-      exact.scrollIntoView({
-        block: "center"
-      });
+              const style =
+                window
+                  .getComputedStyle(
+                    element
+                  );
 
-      exact.click();
+              return {
+                element,
+                text,
+                tag:
+                  element.tagName
+                    .toLowerCase(),
+                role:
+                  element.getAttribute(
+                    "role"
+                  ) || "",
+                cursor:
+                  style.cursor,
+                width:
+                  rect.width,
+                height:
+                  rect.height,
+                x:
+                  rect.left +
+                  rect.width / 2,
+                y:
+                  rect.top +
+                  rect.height / 2
+              };
+            })
+            .filter(item =>
+              item.text
+                .toLowerCase() ===
+                wanted &&
+              item.width > 0 &&
+              item.height > 0
+            );
 
-      return true;
+        if (!matches.length) {
+          return null;
+        }
 
-    }, targetText);
+        /*
+         * Prefer a real button/role button.
+         */
+        const preferred =
+          matches.find(
+            item =>
+              item.tag ===
+                "button" ||
+              item.role ===
+                "button"
+          ) ||
+          matches.find(
+            item =>
+              item.tag === "a"
+          ) ||
+          matches.find(
+            item =>
+              item.cursor ===
+                "pointer"
+          ) ||
+          matches[0];
+
+        preferred
+          .element
+          .scrollIntoView({
+            block: "center",
+            inline: "center"
+          });
+
+        const rect =
+          preferred
+            .element
+            .getBoundingClientRect();
+
+        return {
+          text:
+            preferred.text,
+
+          tag:
+            preferred.tag,
+
+          role:
+            preferred.role,
+
+          cursor:
+            preferred.cursor,
+
+          x:
+            rect.left +
+            rect.width / 2,
+
+          y:
+            rect.top +
+            rect.height / 2,
+
+          width:
+            rect.width,
+
+          height:
+            rect.height
+        };
+
+      },
+      targetText
+    );
   }
 
 
-  async inspectFunnelStep(request) {
+  async clickExactText(
+    page,
+    text
+  ) {
+    const point =
+      await this.findExactTextClickPoint(
+        page,
+        text
+      );
+
+    if (!point) {
+      return {
+        clicked: false,
+        target: text
+      };
+    }
+
+    await page.mouse.move(
+      point.x,
+      point.y
+    );
+
+    await sleep(100);
+
+    await page.mouse.down();
+
+    await sleep(80);
+
+    await page.mouse.up();
+
+    return {
+      clicked: true,
+      target: text,
+      point
+    };
+  }
+
+
+  async inspectFunnelStep(
+    request
+  ) {
     const args =
-      await this.body(request);
+      await this.body(
+        request
+      );
 
     const name =
-      String(args.name || "").trim();
+      String(
+        args.name || ""
+      ).trim();
 
     if (!name) {
-      return json({
-        status: "error",
-        message:
-          "Step/page name is required."
-      }, 400);
+      return json(
+        {
+          status:
+            "error",
+
+          message:
+            "Step/page name is required."
+        },
+        400
+      );
     }
 
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status: "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const page =
@@ -977,41 +1336,37 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status: "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
-    await this.waitForHighLevel(page);
+    await this.waitForHighLevel(
+      page
+    );
 
-    const before =
-      await this.getPageSnapshot(page);
-
-    const clicked =
-      await this.clickText(
+    const clickResult =
+      await this.clickExactText(
         page,
         name
       );
 
-    if (!clicked) {
-      return json({
-        status: "step-not-found",
-        stepName: name
-      }, 404);
-    }
-
-    try {
-      await page.waitForFunction(
-        oldUrl =>
-          window.location.href !==
-          oldUrl,
+    if (!clickResult.clicked) {
+      return json(
         {
-          timeout: 15000,
-          polling: 300
+          status:
+            "step-not-found",
+
+          stepName:
+            name
         },
-        before.url
+        404
       );
-    } catch {}
+    }
 
     await sleep(1800);
 
@@ -1024,7 +1379,8 @@ export class BrowserManager extends DurableObject {
 
         const text =
           clean(
-            document.body?.innerText ||
+            document.body
+              ?.innerText ||
             ""
           );
 
@@ -1034,13 +1390,678 @@ export class BrowserManager extends DurableObject {
               'a, button, [role="button"], [role="link"]'
             )
           )
+            .map(el => ({
+              text:
+                clean(
+                  el.innerText ||
+                  el.textContent ||
+                  el.getAttribute(
+                    "aria-label"
+                  )
+                ),
+
+              href:
+                el.tagName === "A"
+                  ? el.href
+                  : ""
+            }))
+            .filter(
+              item =>
+                item.text ||
+                item.href
+            );
+
+        return {
+          title:
+            document.title,
+
+          url:
+            location.href,
+
+          bodyPreview:
+            text.slice(
+              0,
+              12000
+            ),
+
+          controls:
+            controls.slice(
+              0,
+              250
+            )
+        };
+      });
+
+    return json({
+      status:
+        "funnel-step-inspection-success",
+
+      stepName:
+        name,
+
+      readOnly:
+        true,
+
+      result
+    });
+  }
+
+
+  /*
+   * ---------------------------------------------------
+   * BUILDER DETECTION
+   * ---------------------------------------------------
+   */
+
+
+  async inspectFrame(frame) {
+    try {
+      return await frame.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
+
+        const text =
+          clean(
+            document.body
+              ?.innerText ||
+            ""
+          );
+
+        const lower =
+          text.toLowerCase();
+
+        const signals = [
+          "save",
+          "preview",
+          "desktop",
+          "mobile",
+          "section",
+          "sections",
+          "row",
+          "rows",
+          "column",
+          "columns",
+          "element",
+          "elements",
+          "undo",
+          "redo",
+          "settings"
+        ];
+
+        const foundSignals =
+          signals.filter(
+            signal =>
+              lower.includes(
+                signal
+              )
+          );
+
+        const controls =
+          Array.from(
+            document.querySelectorAll(
+              'button, a, [role="button"], [role="link"], input, select, textarea'
+            )
+          )
+            .map(el => ({
+              tag:
+                el.tagName
+                  .toLowerCase(),
+
+              type:
+                el.getAttribute(
+                  "type"
+                ) || "",
+
+              text:
+                clean(
+                  el.innerText ||
+                  el.textContent ||
+                  el.getAttribute(
+                    "aria-label"
+                  ) ||
+                  el.getAttribute(
+                    "placeholder"
+                  )
+                )
+            }))
+            .filter(
+              item =>
+                item.text
+            )
+            .slice(
+              0,
+              300
+            );
+
+        return {
+          url:
+            window.location.href,
+
+          bodyPreview:
+            text.slice(
+              0,
+              6000
+            ),
+
+          signals:
+            foundSignals,
+
+          controls
+        };
+      });
+
+    } catch (error) {
+      return {
+        url:
+          frame.url(),
+
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      };
+    }
+  }
+
+
+  async detectBuilder(page) {
+    const pageSnapshot =
+      await this.getPageSnapshot(
+        page
+      );
+
+    const topLower =
+      pageSnapshot.body
+        .toLowerCase();
+
+    const builderTerms = [
+      "save",
+      "preview",
+      "desktop",
+      "mobile",
+      "sections",
+      "rows",
+      "columns",
+      "elements",
+      "undo",
+      "redo"
+    ];
+
+    const topSignals =
+      builderTerms.filter(
+        term =>
+          topLower.includes(
+            term
+          )
+      );
+
+    const frameResults = [];
+
+    for (
+      const frame
+      of page.frames()
+    ) {
+      frameResults.push(
+        await this.inspectFrame(
+          frame
+        )
+      );
+    }
+
+    const frameSignalCount =
+      frameResults.reduce(
+        (total, frame) =>
+          total +
+          (
+            Array.isArray(
+              frame.signals
+            )
+              ? frame.signals.length
+              : 0
+          ),
+        0
+      );
+
+    /*
+     * Require Save plus other builder signals,
+     * OR enough signals across the frames.
+     */
+    const topHasSave =
+      topLower.includes(
+        "save"
+      );
+
+    const isBuilder =
+      (
+        topHasSave &&
+        topSignals.length >= 2
+      ) ||
+      frameSignalCount >= 4;
+
+    return {
+      isBuilder,
+
+      title:
+        pageSnapshot.title,
+
+      url:
+        pageSnapshot.url,
+
+      topSignals,
+
+      frameSignalCount,
+
+      bodyPreview:
+        pageSnapshot.body.slice(
+          0,
+          5000
+        ),
+
+      frames:
+        frameResults
+    };
+  }
+
+
+  async findBuilderPage(
+    browser
+  ) {
+    const pages =
+      await browser.pages();
+
+    for (
+      const page
+      of pages
+    ) {
+      try {
+        const detection =
+          await this.detectBuilder(
+            page
+          );
+
+        if (
+          detection.isBuilder
+        ) {
+          return {
+            page,
+            detection
+          };
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+
+  /*
+   * ---------------------------------------------------
+   * OPEN PAGE BUILDER
+   * ---------------------------------------------------
+   */
+
+
+  async openPageBuilder() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
+    }
+
+    /*
+     * If the builder is already open,
+     * just confirm it.
+     */
+    const alreadyOpen =
+      await this.findBuilderPage(
+        browser
+      );
+
+    if (alreadyOpen) {
+      await this.storage.put(
+        "builderUrl",
+        alreadyOpen
+          .page
+          .url()
+      );
+
+      return json({
+        status:
+          "page-builder-open",
+
+        verified:
+          true,
+
+        alreadyOpen:
+          true,
+
+        builder:
+          alreadyOpen.detection
+      });
+    }
+
+    const page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
+    }
+
+    await this.waitForHighLevel(
+      page
+    );
+
+    const beforePages =
+      await browser.pages();
+
+    const beforeUrls =
+      beforePages.map(
+        p => p.url()
+      );
+
+    const before =
+      await this.getPageSnapshot(
+        page
+      );
+
+    /*
+     * Exact "Edit" only.
+     * This deliberately will NOT match
+     * Edit page details or Edit in a New Tab.
+     */
+    const clickResult =
+      await this.clickExactText(
+        page,
+        "Edit"
+      );
+
+    if (!clickResult.clicked) {
+      return json(
+        {
+          status:
+            "edit-control-not-found",
+
+          message:
+            "The exact Edit control was not found on the current funnel step overview.",
+
+          page:
+            before
+        },
+        404
+      );
+    }
+
+    /*
+     * Wait for either:
+     * - a new tab
+     * - URL change
+     * - actual builder signals
+     */
+    let builderFound =
+      null;
+
+    const started =
+      Date.now();
+
+    while (
+      Date.now() -
+      started <
+      30000
+    ) {
+      await sleep(
+        750
+      );
+
+      builderFound =
+        await this.findBuilderPage(
+          browser
+        );
+
+      if (builderFound) {
+        break;
+      }
+
+      const pagesNow =
+        await browser.pages();
+
+      const changed =
+        pagesNow.some(
+          p =>
+            !beforeUrls.includes(
+              p.url()
+            )
+        );
+
+      if (changed) {
+        /*
+         * Give newly opened editor page
+         * time to render.
+         */
+        await sleep(
+          1500
+        );
+
+        builderFound =
+          await this.findBuilderPage(
+            browser
+          );
+
+        if (builderFound) {
+          break;
+        }
+      }
+    }
+
+    if (!builderFound) {
+      const pages =
+        await browser.pages();
+
+      const diagnostics = [];
+
+      for (
+        let i = 0;
+        i < pages.length;
+        i++
+      ) {
+        try {
+          const snapshot =
+            await this
+              .getPageSnapshot(
+                pages[i]
+              );
+
+          diagnostics.push({
+            index:
+              i,
+
+            title:
+              snapshot.title,
+
+            url:
+              snapshot.url,
+
+            bodyPreview:
+              snapshot.body.slice(
+                0,
+                2500
+              )
+          });
+
+        } catch (error) {
+          diagnostics.push({
+            index:
+              i,
+
+            url:
+              pages[i].url(),
+
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error)
+          });
+        }
+      }
+
+      return json(
+        {
+          status:
+            "page-builder-not-verified",
+
+          message:
+            "The exact Edit control received a real browser click, but the HighLevel builder could not yet be verified. No false success has been reported.",
+
+          clickResult,
+
+          before,
+
+          pages:
+            diagnostics
+        },
+        409
+      );
+    }
+
+    const builderUrl =
+      builderFound
+        .page
+        .url();
+
+    await this.storage.put(
+      "builderUrl",
+      builderUrl
+    );
+
+    return json({
+      status:
+        "page-builder-open",
+
+      verified:
+        true,
+
+      clickResult,
+
+      builder:
+        builderFound.detection
+    });
+  }
+
+
+  /*
+   * ---------------------------------------------------
+   * INSPECT PAGE BUILDER
+   * ---------------------------------------------------
+   */
+
+
+  async inspectPageBuilder() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
+    }
+
+    const found =
+      await this.findBuilderPage(
+        browser
+      );
+
+    if (!found) {
+      return json(
+        {
+          status:
+            "page-builder-not-open",
+
+          message:
+            "No verified HighLevel page builder is currently open."
+        },
+        409
+      );
+    }
+
+    const page =
+      found.page;
+
+    const topControls =
+      await page.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
+
+        const visible =
+          element => {
+            const style =
+              window
+                .getComputedStyle(
+                  element
+                );
+
+            const rect =
+              element
+                .getBoundingClientRect();
+
+            return (
+              style.display !==
+                "none" &&
+              style.visibility !==
+                "hidden" &&
+              rect.width > 0 &&
+              rect.height > 0
+            );
+          };
+
+        return Array.from(
+          document.querySelectorAll(
+            'button, a, [role="button"], [role="link"], input, textarea, select'
+          )
+        )
+          .filter(
+            visible
+          )
           .map(el => ({
+            tag:
+              el.tagName
+                .toLowerCase(),
+
+            type:
+              el.getAttribute(
+                "type"
+              ) || "",
+
             text:
               clean(
                 el.innerText ||
                 el.textContent ||
                 el.getAttribute(
                   "aria-label"
+                ) ||
+                el.getAttribute(
+                  "placeholder"
                 )
               ),
 
@@ -1053,27 +2074,56 @@ export class BrowserManager extends DurableObject {
             item =>
               item.text ||
               item.href
+          )
+          .slice(
+            0,
+            400
           );
-
-        return {
-          title: document.title,
-          url: location.href,
-          bodyPreview:
-            text.slice(0, 12000),
-          controls:
-            controls.slice(0, 250)
-        };
       });
+
+    const frames = [];
+
+    for (
+      const frame
+      of page.frames()
+    ) {
+      frames.push(
+        await this.inspectFrame(
+          frame
+        )
+      );
+    }
 
     return json({
       status:
-        "funnel-step-inspection-success",
+        "page-builder-inspection-success",
 
-      stepName: name,
-      readOnly: true,
-      result
+      readOnly:
+        true,
+
+      verified:
+        true,
+
+      builder: {
+        title:
+          await page.title(),
+
+        url:
+          page.url(),
+
+        topControls,
+
+        frames
+      }
     });
   }
+
+
+  /*
+   * ---------------------------------------------------
+   * STATUS
+   * ---------------------------------------------------
+   */
 
 
   async status() {
@@ -1082,15 +2132,20 @@ export class BrowserManager extends DurableObject {
         "loginSessionId"
       );
 
-    let reachable = false;
+    let reachable =
+      false;
 
     if (
       this.browser &&
-      this.browser.isConnected()
+      this.browser
+        .isConnected()
     ) {
-      reachable = true;
+      reachable =
+        true;
 
-    } else if (sessionId) {
+    } else if (
+      sessionId
+    ) {
       try {
         this.browser =
           await puppeteer.connect(
@@ -1101,19 +2156,37 @@ export class BrowserManager extends DurableObject {
         reachable =
           Boolean(
             this.browser &&
-            this.browser.isConnected()
+            this.browser
+              .isConnected()
           );
 
       } catch {
-        reachable = false;
+        reachable =
+          false;
       }
     }
 
+    let builderOpen =
+      false;
+
+    if (reachable) {
+      try {
+        builderOpen =
+          Boolean(
+            await this.findBuilderPage(
+              this.browser
+            )
+          );
+      } catch {}
+    }
+
     return json({
-      status: "ok",
+      status:
+        "ok",
 
       sessionId:
-        sessionId || null,
+        sessionId ||
+        null,
 
       browserReachable:
         reachable,
@@ -1121,59 +2194,111 @@ export class BrowserManager extends DurableObject {
       currentFunnel:
         await this.storage.get(
           "currentFunnelName"
-        ) || null,
+        ) ||
+        null,
 
       currentFunnelUrl:
         await this.storage.get(
           "currentFunnelUrl"
-        ) || null
+        ) ||
+        null,
+
+      builderUrl:
+        await this.storage.get(
+          "builderUrl"
+        ) ||
+        null,
+
+      builderOpen
     });
   }
 
 
+  /*
+   * ---------------------------------------------------
+   * ROUTER
+   * ---------------------------------------------------
+   */
+
+
   async fetch(request) {
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     try {
-      switch (url.pathname) {
+      switch (
+        url.pathname
+      ) {
 
         case "/api/login/start":
-          return await this.startLoginBrowser();
+          return await this
+            .startLoginBrowser();
+
 
         case "/api/status":
-          return await this.status();
+          return await this
+            .status();
+
 
         case "/api/sites/inspect":
-          return await this.inspectFunnels();
+          return await this
+            .inspectFunnels();
+
 
         case "/api/funnel/open":
-          return await this.openFunnel(
-            request
-          );
+          return await this
+            .openFunnel(
+              request
+            );
+
 
         case "/api/funnel/steps":
-          return await this.listFunnelSteps();
+          return await this
+            .listFunnelSteps();
+
 
         case "/api/funnel/step/inspect":
-          return await this.inspectFunnelStep(
-            request
-          );
+          return await this
+            .inspectFunnelStep(
+              request
+            );
+
+
+        case "/api/builder/open":
+          return await this
+            .openPageBuilder();
+
+
+        case "/api/builder/inspect":
+          return await this
+            .inspectPageBuilder();
+
 
         default:
-          return json({
-            error: "Unknown action"
-          }, 404);
+          return json(
+            {
+              error:
+                "Unknown action"
+            },
+            404
+          );
       }
 
     } catch (error) {
-      return json({
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : String(error)
-      }, 500);
+      return json(
+        {
+          status:
+            "error",
+
+          message:
+            error instanceof Error
+              ? error.message
+              : String(error)
+        },
+        500
+      );
     }
   }
 }
