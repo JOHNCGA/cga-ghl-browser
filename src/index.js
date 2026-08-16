@@ -14,17 +14,24 @@ export default {
         timeout: 30000
       });
 
-      return Response.json({
+      const result = {
         status: "success",
         title: await page.title(),
-        url: page.url()
-      });
+        url: page.url(),
+        hasEmailSecret: Boolean(env.GHL_EMAIL),
+        hasPasswordSecret: Boolean(env.GHL_PASSWORD)
+      };
+
+      return Response.json(result);
 
     } catch (error) {
-      return Response.json({
-        status: "error",
-        message: error instanceof Error ? error.message : String(error)
-      }, { status: 500 });
+      return Response.json(
+        {
+          status: "error",
+          message: error instanceof Error ? error.message : String(error)
+        },
+        { status: 500 }
+      );
 
     } finally {
       if (browser) {
@@ -35,4 +42,3 @@ export default {
     }
   }
 };
-
