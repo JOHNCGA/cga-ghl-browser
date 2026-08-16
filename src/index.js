@@ -24,6 +24,7 @@ function controlPage() {
 <head>
   <meta charset="utf-8">
   <title>CGA HighLevel Browser</title>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -31,23 +32,27 @@ function controlPage() {
       margin: 40px auto;
       padding: 0 20px;
     }
+
     input {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
       margin: 8px 0 15px;
     }
+
     button {
       padding: 11px 15px;
       margin: 4px;
       cursor: pointer;
     }
+
     pre {
       background: #f4f4f4;
       padding: 15px;
       white-space: pre-wrap;
       word-break: break-word;
     }
+
     section {
       margin: 25px 0;
       padding-bottom: 15px;
@@ -61,7 +66,12 @@ function controlPage() {
 <h1>CGA HighLevel Browser</h1>
 
 <label><strong>Browser Admin Key</strong></label>
-<input id="key" type="password" placeholder="Enter BROWSER_ADMIN_KEY">
+
+<input
+  id="key"
+  type="password"
+  placeholder="Enter BROWSER_ADMIN_KEY"
+/>
 
 <section>
   <h3>Browser</h3>
@@ -123,6 +133,10 @@ function controlPage() {
   <button onclick="run('/api/builder/inspect')">
     Inspect Page Builder
   </button>
+
+  <button onclick="run('/api/builder/elements')">
+    Inspect Builder Elements
+  </button>
 </section>
 
 <pre id="result">Ready</pre>
@@ -137,31 +151,52 @@ async function run(path) {
 }
 
 async function runWithBody(path, body) {
-  const result = document.getElementById("result");
-  const key = adminKey();
+  const result =
+    document.getElementById("result");
+
+  const key =
+    adminKey();
 
   if (!key) {
-    result.textContent = "Enter your Browser Admin Key first.";
+    result.textContent =
+      "Enter your Browser Admin Key first.";
+
     return;
   }
 
-  result.textContent = "Working...";
+  result.textContent =
+    "Working...";
 
   try {
-    const response = await fetch(path, {
-      method: "POST",
-      headers: {
-        "x-admin-key": key,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(body || {})
-    });
+    const response =
+      await fetch(path, {
+        method: "POST",
 
-    const data = await response.json();
-    result.textContent = JSON.stringify(data, null, 2);
+        headers: {
+          "x-admin-key": key,
+          "content-type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify(
+            body || {}
+          )
+      });
+
+    const data =
+      await response.json();
+
+    result.textContent =
+      JSON.stringify(
+        data,
+        null,
+        2
+      );
 
   } catch (error) {
-    result.textContent = String(error);
+    result.textContent =
+      String(error);
   }
 }
 </script>
@@ -170,7 +205,8 @@ async function runWithBody(path, body) {
 </html>
 `, {
     headers: {
-      "content-type": "text/html; charset=utf-8"
+      "content-type":
+        "text/html; charset=utf-8"
     }
   });
 }
@@ -178,37 +214,80 @@ async function runWithBody(path, body) {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    const url =
+      new URL(request.url);
 
-    if (url.pathname === "/") {
+    if (
+      url.pathname === "/"
+    ) {
       return controlPage();
     }
 
-    if (!url.pathname.startsWith("/api/")) {
-      return json({ error: "Not found" }, 404);
+    if (
+      !url.pathname.startsWith(
+        "/api/"
+      )
+    ) {
+      return json(
+        {
+          error:
+            "Not found"
+        },
+        404
+      );
     }
 
-    if (!env.BROWSER_ADMIN_KEY) {
-      return json({
-        error: "BROWSER_ADMIN_KEY is not configured."
-      }, 503);
+    if (
+      !env.BROWSER_ADMIN_KEY
+    ) {
+      return json(
+        {
+          error:
+            "BROWSER_ADMIN_KEY is not configured."
+        },
+        503
+      );
     }
 
     const suppliedKey =
-      request.headers.get("x-admin-key");
+      request.headers.get(
+        "x-admin-key"
+      );
 
-    if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
-      return json({ error: "Unauthorized" }, 401);
+    if (
+      suppliedKey !==
+      env.BROWSER_ADMIN_KEY
+    ) {
+      return json(
+        {
+          error:
+            "Unauthorized"
+        },
+        401
+      );
     }
 
-    if (request.method !== "POST") {
-      return json({ error: "Method not allowed" }, 405);
+    if (
+      request.method !== "POST"
+    ) {
+      return json(
+        {
+          error:
+            "Method not allowed"
+        },
+        405
+      );
     }
 
     const object =
-      env.BROWSER_MANAGER.getByName("cga-ghl");
+      env.BROWSER_MANAGER
+        .getByName(
+          "cga-ghl"
+        );
 
-    return object.fetch(request);
+    return object.fetch(
+      request
+    );
   }
 };
 
@@ -218,15 +297,21 @@ export class BrowserManager extends DurableObject {
   constructor(state, env) {
     super(state, env);
 
-    this.storage = state.storage;
-    this.env = env;
-    this.browser = null;
+    this.storage =
+      state.storage;
+
+    this.env =
+      env;
+
+    this.browser =
+      null;
   }
 
 
   async body(request) {
     try {
       return await request.json();
+
     } catch {
       return {};
     }
@@ -240,6 +325,7 @@ export class BrowserManager extends DurableObject {
     ) {
       try {
         await this.browser.close();
+
       } catch {}
     }
 
@@ -247,7 +333,8 @@ export class BrowserManager extends DurableObject {
       await puppeteer.launch(
         this.env.BROWSER,
         {
-          keep_alive: 600000
+          keep_alive:
+            600000
         }
       );
 
@@ -261,8 +348,11 @@ export class BrowserManager extends DurableObject {
     await page.goto(
       `${GHL_BASE}/`,
       {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
+        waitUntil:
+          "domcontentloaded",
+
+        timeout:
+          30000
       }
     );
 
@@ -275,9 +365,13 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status: "login-browser-ready",
+      status:
+        "login-browser-ready",
+
       sessionId,
-      pageUrl: page.url()
+
+      pageUrl:
+        page.url()
     });
   }
 
@@ -327,47 +421,63 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async chooseHighLevelPage(browser) {
+  async chooseHighLevelPage(
+    browser
+  ) {
     const pages =
-      await this.highLevelPages(browser);
+      await this.highLevelPages(
+        browser
+      );
 
     if (!pages.length) {
       return null;
     }
 
     const builder =
-      await this.findBuilderPage(browser);
+      await this.findBuilderPage(
+        browser
+      );
 
     if (builder) {
       return builder.page;
     }
 
     const funnelDetail =
-      pages.find(page => {
-        const url = page.url();
+      pages.find(
+        page => {
+          const url =
+            page.url();
 
-        return (
-          url.includes("/funnels-websites/") &&
-          !url.endsWith("/funnels")
-        );
-      });
+          return (
+            url.includes(
+              "/funnels-websites/"
+            ) &&
+            !url.endsWith(
+              "/funnels"
+            )
+          );
+        }
+      );
 
     if (funnelDetail) {
       return funnelDetail;
     }
 
     const funnels =
-      pages.find(page =>
-        page.url().includes(
-          "/funnels-websites/funnels"
-        )
+      pages.find(
+        page =>
+          page.url().includes(
+            "/funnels-websites/funnels"
+          )
       );
 
     if (funnels) {
       return funnels;
     }
 
-    return pages[pages.length - 1];
+    return pages[
+      pages.length - 1
+    ];
   }
 
 
@@ -377,15 +487,25 @@ export class BrowserManager extends DurableObject {
   ) {
     await page.waitForSelector(
       "body",
-      { timeout: 15000 }
+      {
+        timeout:
+          15000
+      }
     );
 
     try {
       await page.waitForFunction(
         () => {
           const text =
-            (document.body?.innerText || "")
-              .replace(/\\s+/g, " ")
+            (
+              document.body
+                ?.innerText ||
+              ""
+            )
+              .replace(
+                /\\s+/g,
+                " "
+              )
               .trim()
               .toLowerCase();
 
@@ -398,31 +518,52 @@ export class BrowserManager extends DurableObject {
         },
         {
           timeout,
-          polling: 500
+          polling:
+            500
         }
       );
+
     } catch {}
 
-    await sleep(1200);
+    await sleep(
+      1200
+    );
   }
 
 
   async snapshot(page) {
-    return page.evaluate(() => {
-      const clean = value =>
-        String(value || "")
-          .replace(/\\s+/g, " ")
-          .trim();
+    return page.evaluate(
+      () => {
+        const clean =
+          value =>
+            String(
+              value || ""
+            )
+              .replace(
+                /\\s+/g,
+                " "
+              )
+              .trim();
 
-      return {
-        title: document.title,
-        url: location.href,
-        body:
-          clean(
-            document.body?.innerText || ""
-          ).slice(0, 15000)
-      };
-    });
+        return {
+          title:
+            document.title,
+
+          url:
+            location.href,
+
+          body:
+            clean(
+              document.body
+                ?.innerText ||
+              ""
+            ).slice(
+              0,
+              15000
+            )
+        };
+      }
+    );
   }
 
 
@@ -432,15 +573,26 @@ export class BrowserManager extends DurableObject {
     preferPointer = true
   ) {
     return page.evaluate(
-      ({ targetText, preferPointer }) => {
+      ({
+        targetText,
+        preferPointer
+      }) => {
 
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
+        const clean =
+          value =>
+            String(
+              value || ""
+            )
+              .replace(
+                /\\s+/g,
+                " "
+              )
+              .trim();
 
         const wanted =
-          clean(targetText)
+          clean(
+            targetText
+          )
             .toLowerCase();
 
         const elements =
@@ -452,63 +604,82 @@ export class BrowserManager extends DurableObject {
 
         const matches =
           elements
-            .map(element => {
-              const text =
-                clean(
-                  element.innerText ||
-                  element.textContent ||
-                  element.getAttribute(
-                    "aria-label"
-                  )
-                );
+            .map(
+              element => {
+                const text =
+                  clean(
+                    element.innerText ||
+                    element.textContent ||
+                    element.getAttribute(
+                      "aria-label"
+                    )
+                  );
 
-              const rect =
-                element
-                  .getBoundingClientRect();
-
-              const style =
-                window.getComputedStyle(
+                const rect =
                   element
-                );
+                    .getBoundingClientRect();
 
-              return {
-                element,
-                text,
-                tag:
-                  element.tagName
-                    .toLowerCase(),
-                role:
-                  element.getAttribute(
-                    "role"
-                  ) || "",
-                cursor:
-                  style.cursor,
-                width:
-                  rect.width,
-                height:
-                  rect.height
-              };
-            })
-            .filter(item =>
-              item.text
-                .toLowerCase() === wanted &&
-              item.width > 0 &&
-              item.height > 0
+                const style =
+                  window
+                    .getComputedStyle(
+                      element
+                    );
+
+                return {
+                  element,
+
+                  text,
+
+                  tag:
+                    element.tagName
+                      .toLowerCase(),
+
+                  role:
+                    element.getAttribute(
+                      "role"
+                    ) || "",
+
+                  cursor:
+                    style.cursor,
+
+                  width:
+                    rect.width,
+
+                  height:
+                    rect.height
+                };
+              }
+            )
+            .filter(
+              item =>
+                item.text
+                  .toLowerCase() ===
+                  wanted &&
+                item.width > 0 &&
+                item.height > 0
             );
 
-        if (!matches.length) {
+        if (
+          !matches.length
+        ) {
           return null;
         }
 
         const preferred =
-          matches.find(item =>
-            item.tag === "button"
+          matches.find(
+            item =>
+              item.tag ===
+              "button"
           ) ||
-          matches.find(item =>
-            item.role === "button"
+          matches.find(
+            item =>
+              item.role ===
+              "button"
           ) ||
-          matches.find(item =>
-            item.tag === "a"
+          matches.find(
+            item =>
+              item.tag ===
+              "a"
           ) ||
           (
             preferPointer
@@ -521,10 +692,14 @@ export class BrowserManager extends DurableObject {
           ) ||
           matches[0];
 
-        preferred.element.scrollIntoView({
-          block: "center",
-          inline: "center"
-        });
+        preferred.element
+          .scrollIntoView({
+            block:
+              "center",
+
+            inline:
+              "center"
+          });
 
         const rect =
           preferred.element
@@ -560,7 +735,9 @@ export class BrowserManager extends DurableObject {
 
       },
       {
-        targetText: text,
+        targetText:
+          text,
+
         preferPointer
       }
     );
@@ -592,103 +769,132 @@ export class BrowserManager extends DurableObject {
     page,
     funnelName
   ) {
-    return page.evaluate(name => {
-      const clean = value =>
-        String(value || "")
-          .replace(/\\s+/g, " ")
-          .trim();
+    return page.evaluate(
+      name => {
 
-      const wanted =
-        clean(name).toLowerCase();
+        const clean =
+          value =>
+            String(
+              value || ""
+            )
+              .replace(
+                /\\s+/g,
+                " "
+              )
+              .trim();
 
-      const rows =
-        Array.from(
-          document.querySelectorAll(
-            'tr, [role="row"]'
-          )
-        );
+        const wanted =
+          clean(name)
+            .toLowerCase();
 
-      const row =
-        rows.find(element => {
-          const text =
-            clean(
-              element.innerText ||
-              element.textContent
-            ).toLowerCase();
-
-          return text.includes(wanted);
-        });
-
-      if (!row) {
-        return null;
-      }
-
-      const targets =
-        Array.from(
-          row.querySelectorAll(
-            "div, span, a, button"
-          )
-        );
-
-      const target =
-        targets.find(element => {
-          const text =
-            clean(
-              element.innerText ||
-              element.textContent
-            ).toLowerCase();
-
-          const style =
-            getComputedStyle(element);
-
-          const rect =
-            element.getBoundingClientRect();
-
-          return (
-            text === wanted &&
-            style.cursor === "pointer" &&
-            rect.width > 20 &&
-            rect.height > 10
+        const rows =
+          Array.from(
+            document.querySelectorAll(
+              'tr, [role="row"]'
+            )
           );
+
+        const row =
+          rows.find(
+            element => {
+              const text =
+                clean(
+                  element.innerText ||
+                  element.textContent
+                )
+                  .toLowerCase();
+
+              return text.includes(
+                wanted
+              );
+            }
+          );
+
+        if (!row) {
+          return null;
+        }
+
+        const targets =
+          Array.from(
+            row.querySelectorAll(
+              "div, span, a, button"
+            )
+          );
+
+        const target =
+          targets.find(
+            element => {
+              const text =
+                clean(
+                  element.innerText ||
+                  element.textContent
+                )
+                  .toLowerCase();
+
+              const style =
+                getComputedStyle(
+                  element
+                );
+
+              const rect =
+                element
+                  .getBoundingClientRect();
+
+              return (
+                text === wanted &&
+                style.cursor ===
+                  "pointer" &&
+                rect.width > 20 &&
+                rect.height > 10
+              );
+            }
+          );
+
+        if (!target) {
+          return null;
+        }
+
+        target.scrollIntoView({
+          block:
+            "center",
+
+          inline:
+            "center"
         });
 
-      if (!target) {
-        return null;
-      }
+        const rect =
+          target
+            .getBoundingClientRect();
 
-      target.scrollIntoView({
-        block: "center",
-        inline: "center"
-      });
+        return {
+          x:
+            rect.left +
+            rect.width / 2,
 
-      const rect =
-        target.getBoundingClientRect();
+          y:
+            rect.top +
+            rect.height / 2,
 
-      return {
-        x:
-          rect.left +
-          rect.width / 2,
+          width:
+            rect.width,
 
-        y:
-          rect.top +
-          rect.height / 2,
+          height:
+            rect.height,
 
-        width:
-          rect.width,
+          tag:
+            target.tagName
+              .toLowerCase()
+        };
 
-        height:
-          rect.height,
-
-        tag:
-          target.tagName
-            .toLowerCase()
-      };
-
-    }, funnelName);
+      },
+      funnelName
+    );
   }
 
 
-  async navigateToFunnels(page) {
+  async navigateToFunnels(
+    page
+  ) {
     const funnelsUrl =
       `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
 
@@ -701,13 +907,16 @@ export class BrowserManager extends DurableObject {
         {
           waitUntil:
             "domcontentloaded",
+
           timeout:
             30000
         }
       );
     }
 
-    await this.waitForHighLevel(page);
+    await this.waitForHighLevel(
+      page
+    );
 
     return funnelsUrl;
   }
@@ -722,7 +931,9 @@ export class BrowserManager extends DurableObject {
     );
 
     const before =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const point =
       await this.findFunnelClickPoint(
@@ -744,19 +955,28 @@ export class BrowserManager extends DurableObject {
     try {
       await page.waitForFunction(
         oldUrl =>
-          location.href !== oldUrl,
+          location.href !==
+          oldUrl,
         {
-          timeout: 20000,
-          polling: 300
+          timeout:
+            20000,
+
+          polling:
+            300
         },
         before.url
       );
+
     } catch {}
 
-    await sleep(1200);
+    await sleep(
+      1200
+    );
 
     const after =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const stillList =
       after.url.endsWith(
@@ -793,14 +1013,18 @@ export class BrowserManager extends DurableObject {
     funnelName
   ) {
     const snap =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const bodyLower =
-      snap.body.toLowerCase();
+      snap.body
+        .toLowerCase();
 
     if (
       bodyLower.includes(
-        funnelName.toLowerCase()
+        funnelName
+          .toLowerCase()
       ) &&
       !bodyLower.includes(
         "search for funnels"
@@ -821,24 +1045,31 @@ export class BrowserManager extends DurableObject {
     stepName
   ) {
     const current =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const lower =
-      current.body.toLowerCase();
+      current.body
+        .toLowerCase();
 
-    /*
-     * If the correct step is already selected
-     * and its overview controls are present,
-     * do nothing.
-     */
     if (
       lower.includes(
-        stepName.toLowerCase()
+        stepName
+          .toLowerCase()
       ) &&
-      lower.includes("overview") &&
-      lower.includes("products") &&
-      lower.includes("publishing") &&
-      lower.includes("edit")
+      lower.includes(
+        "overview"
+      ) &&
+      lower.includes(
+        "products"
+      ) &&
+      lower.includes(
+        "publishing"
+      ) &&
+      lower.includes(
+        "edit"
+      )
     ) {
       await this.storage.put(
         "currentStepName",
@@ -862,7 +1093,9 @@ export class BrowserManager extends DurableObject {
     }
 
     const before =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     await this.realClick(
       page,
@@ -871,16 +1104,22 @@ export class BrowserManager extends DurableObject {
 
     try {
       await page.waitForFunction(
-        ({ oldUrl, step }) => {
+        ({
+          oldUrl,
+          step
+        }) => {
+
           const body =
             (
               document.body
                 ?.innerText ||
               ""
-            ).toLowerCase();
+            )
+              .toLowerCase();
 
           return (
-            location.href !== oldUrl ||
+            location.href !==
+              oldUrl ||
             (
               body.includes(
                 step.toLowerCase()
@@ -897,29 +1136,38 @@ export class BrowserManager extends DurableObject {
         {
           timeout:
             15000,
+
           polling:
             300
         },
         {
           oldUrl:
             before.url,
+
           step:
             stepName
         }
       );
+
     } catch {}
 
-    await sleep(1200);
+    await sleep(
+      1200
+    );
 
     const after =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const afterLower =
-      after.body.toLowerCase();
+      after.body
+        .toLowerCase();
 
     if (
       !afterLower.includes(
-        stepName.toLowerCase()
+        stepName
+          .toLowerCase()
       ) ||
       !afterLower.includes(
         "edit"
@@ -944,10 +1192,13 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     let page =
@@ -956,10 +1207,13 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status:
-          "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
     await this.navigateToFunnels(
@@ -967,44 +1221,54 @@ export class BrowserManager extends DurableObject {
     );
 
     const data =
-      await page.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
+      await page.evaluate(
+        () => {
 
-        return {
-          title:
-            document.title,
-
-          url:
-            location.href,
-
-          rows:
-            Array.from(
-              document.querySelectorAll(
-                'tr, [role="row"]'
+          const clean =
+            value =>
+              String(
+                value || ""
               )
-            )
-              .map(row =>
-                clean(
-                  row.innerText ||
-                  row.textContent
+                .replace(
+                  /\\s+/g,
+                  " "
+                )
+                .trim();
+
+          return {
+            title:
+              document.title,
+
+            url:
+              location.href,
+
+            rows:
+              Array.from(
+                document.querySelectorAll(
+                  'tr, [role="row"]'
                 )
               )
-              .filter(Boolean),
+                .map(
+                  row =>
+                    clean(
+                      row.innerText ||
+                      row.textContent
+                    )
+                )
+                .filter(Boolean),
 
-          bodyPreview:
-            clean(
-              document.body
-                ?.innerText ||
-              ""
-            ).slice(
-              0,
-              8000
-            )
-        };
-      });
+            bodyPreview:
+              clean(
+                document.body
+                  ?.innerText ||
+                ""
+              ).slice(
+                0,
+                8000
+              )
+          };
+        }
+      );
 
     return json({
       status:
@@ -1019,9 +1283,13 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async openFunnel(request) {
+  async openFunnel(
+    request
+  ) {
     const args =
-      await this.body(request);
+      await this.body(
+        request
+      );
 
     const name =
       String(
@@ -1029,21 +1297,29 @@ export class BrowserManager extends DurableObject {
       ).trim();
 
     if (!name) {
-      return json({
-        status: "error",
-        message:
-          "Funnel name is required."
-      }, 400);
+      return json(
+        {
+          status:
+            "error",
+
+          message:
+            "Funnel name is required."
+        },
+        400
+      );
     }
 
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     let page =
@@ -1052,10 +1328,13 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status:
-          "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
     const result =
@@ -1096,10 +1375,13 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const page =
@@ -1108,16 +1390,23 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status:
-          "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
-    await this.waitForHighLevel(page);
+    await this.waitForHighLevel(
+      page
+    );
 
     const data =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     return json({
       status:
@@ -1148,9 +1437,13 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async inspectFunnelStep(request) {
+  async inspectFunnelStep(
+    request
+  ) {
     const args =
-      await this.body(request);
+      await this.body(
+        request
+      );
 
     const name =
       String(
@@ -1158,23 +1451,29 @@ export class BrowserManager extends DurableObject {
       ).trim();
 
     if (!name) {
-      return json({
-        status:
-          "error",
+      return json(
+        {
+          status:
+            "error",
 
-        message:
-          "Step/page name is required."
-      }, 400);
+          message:
+            "Step/page name is required."
+        },
+        400
+      );
     }
 
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const page =
@@ -1183,10 +1482,13 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status:
-          "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
     const funnelName =
@@ -1208,38 +1510,53 @@ export class BrowserManager extends DurableObject {
       );
 
     const controls =
-      await page.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
+      await page.evaluate(
+        () => {
 
-        return Array.from(
-          document.querySelectorAll(
-            'a, button, [role="button"], [role="link"]'
-          )
-        )
-          .map(el => ({
-            text:
-              clean(
-                el.innerText ||
-                el.textContent ||
-                el.getAttribute(
-                  "aria-label"
+          const clean =
+            value =>
+              String(
+                value || ""
+              )
+                .replace(
+                  /\\s+/g,
+                  " "
                 )
-              ),
+                .trim();
 
-            href:
-              el.tagName === "A"
-                ? el.href
-                : ""
-          }))
-          .filter(item =>
-            item.text ||
-            item.href
+          return Array.from(
+            document.querySelectorAll(
+              'a, button, [role="button"], [role="link"]'
+            )
           )
-          .slice(0, 250);
-      });
+            .map(
+              el => ({
+                text:
+                  clean(
+                    el.innerText ||
+                    el.textContent ||
+                    el.getAttribute(
+                      "aria-label"
+                    )
+                  ),
+
+                href:
+                  el.tagName === "A"
+                    ? el.href
+                    : ""
+              })
+            )
+            .filter(
+              item =>
+                item.text ||
+                item.href
+            )
+            .slice(
+              0,
+              250
+            );
+        }
+      );
 
     return json({
       status:
@@ -1270,55 +1587,68 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async inspectFrame(frame) {
+  async inspectFrame(
+    frame
+  ) {
     try {
-      return await frame.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
+      return await frame.evaluate(
+        () => {
 
-        const body =
-          clean(
-            document.body
-              ?.innerText ||
-            ""
-          );
+          const clean =
+            value =>
+              String(
+                value || ""
+              )
+                .replace(
+                  /\\s+/g,
+                  " "
+                )
+                .trim();
 
-        const lower =
-          body.toLowerCase();
+          const body =
+            clean(
+              document.body
+                ?.innerText ||
+              ""
+            );
 
-        const signals =
-          [
-            "save",
-            "preview",
-            "desktop",
-            "mobile",
-            "section",
-            "row",
-            "column",
-            "element",
-            "undo",
-            "redo",
-            "settings"
-          ].filter(
-            word =>
-              lower.includes(word)
-          );
+          const lower =
+            body.toLowerCase();
 
-        return {
-          url:
-            location.href,
+          const signals =
+            [
+              "save",
+              "preview",
+              "desktop",
+              "mobile",
+              "section",
+              "row",
+              "column",
+              "element",
+              "undo",
+              "redo",
+              "settings"
+            ].filter(
+              word =>
+                lower.includes(
+                  word
+                )
+            );
 
-          bodyPreview:
-            body.slice(
-              0,
-              6000
-            ),
+          return {
+            url:
+              location.href,
 
-          signals
-        };
-      });
+            bodyPreview:
+              body.slice(
+                0,
+                6000
+              ),
+
+            signals
+          };
+        }
+      );
 
     } catch (error) {
       return {
@@ -1334,15 +1664,21 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async detectBuilder(page) {
+  async detectBuilder(
+    page
+  ) {
     const snap =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const lower =
-      snap.body.toLowerCase();
+      snap.body
+        .toLowerCase();
 
     const urlLower =
-      snap.url.toLowerCase();
+      snap.url
+        .toLowerCase();
 
     const urlSignals =
       (
@@ -1369,10 +1705,13 @@ export class BrowserManager extends DurableObject {
         "elements"
       ].filter(
         word =>
-          lower.includes(word)
+          lower.includes(
+            word
+          )
       );
 
-    const frames = [];
+    const frames =
+      [];
 
     for (
       const frame
@@ -1387,13 +1726,17 @@ export class BrowserManager extends DurableObject {
 
     const frameSignals =
       frames.reduce(
-        (count, frame) =>
+        (
+          count,
+          frame
+        ) =>
           count +
           (
             Array.isArray(
               frame.signals
             )
-              ? frame.signals.length
+              ? frame.signals
+                  .length
               : 0
           ),
         0
@@ -1402,27 +1745,35 @@ export class BrowserManager extends DurableObject {
     const isBuilder =
       urlSignals ||
       topSignals.length >= 4 ||
-      frameSignals >= 5;
+      frameSignals >= 2;
 
     return {
       isBuilder,
+
       title:
         snap.title,
+
       url:
         snap.url,
+
       topSignals,
+
       frameSignals,
+
       bodyPreview:
         snap.body.slice(
           0,
           5000
         ),
+
       frames
     };
   }
 
 
-  async findBuilderPage(browser) {
+  async findBuilderPage(
+    browser
+  ) {
     const pages =
       await browser.pages();
 
@@ -1444,6 +1795,7 @@ export class BrowserManager extends DurableObject {
             detection
           };
         }
+
       } catch {}
     }
 
@@ -1456,10 +1808,13 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const existing =
@@ -1489,10 +1844,13 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!page) {
-      return json({
-        status:
-          "no-highlevel-page"
-      }, 409);
+      return json(
+        {
+          status:
+            "no-highlevel-page"
+        },
+        409
+      );
     }
 
     const funnelName =
@@ -1506,30 +1864,31 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!funnelName) {
-      return json({
-        status:
-          "no-current-funnel",
+      return json(
+        {
+          status:
+            "no-current-funnel",
 
-        message:
-          "Open a funnel first."
-      }, 409);
+          message:
+            "Open a funnel first."
+        },
+        409
+      );
     }
 
     if (!stepName) {
-      return json({
-        status:
-          "no-current-step",
+      return json(
+        {
+          status:
+            "no-current-step",
 
-        message:
-          "Select a funnel step first."
-      }, 409);
+          message:
+            "Select a funnel step first."
+        },
+        409
+      );
     }
 
-    /*
-     * THIS IS THE FIX:
-     * restore the correct funnel and step overview
-     * before searching for Edit.
-     */
     await this.ensureFunnelOpen(
       page,
       funnelName
@@ -1541,7 +1900,9 @@ export class BrowserManager extends DurableObject {
     );
 
     const before =
-      await this.snapshot(page);
+      await this.snapshot(
+        page
+      );
 
     const editPoint =
       await this.findExactClickPoint(
@@ -1551,37 +1912,32 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!editPoint) {
-      return json({
-        status:
-          "edit-control-not-found",
+      return json(
+        {
+          status:
+            "edit-control-not-found",
 
-        funnelName,
-        stepName,
+          funnelName,
 
-        message:
-          "The correct funnel and step overview were restored, but the exact Edit control could not be located.",
+          stepName,
 
-        page: {
-          title:
-            before.title,
-          url:
-            before.url,
-          bodyPreview:
-            before.body.slice(
-              0,
-              5000
-            )
-        }
-      }, 404);
-    }
+          page: {
+            title:
+              before.title,
 
-    const pagesBefore =
-      await browser.pages();
+            url:
+              before.url,
 
-    const urlsBefore =
-      pagesBefore.map(
-        p => p.url()
+            bodyPreview:
+              before.body.slice(
+                0,
+                5000
+              )
+          }
+        },
+        404
       );
+    }
 
     await this.realClick(
       page,
@@ -1595,10 +1951,13 @@ export class BrowserManager extends DurableObject {
       Date.now();
 
     while (
-      Date.now() - start <
+      Date.now() -
+      start <
       30000
     ) {
-      await sleep(750);
+      await sleep(
+        750
+      );
 
       builder =
         await this.findBuilderPage(
@@ -1611,54 +1970,16 @@ export class BrowserManager extends DurableObject {
     }
 
     if (!builder) {
-      const pages =
-        await browser.pages();
+      return json(
+        {
+          status:
+            "page-builder-not-verified",
 
-      const diagnostics = [];
-
-      for (
-        let i = 0;
-        i < pages.length;
-        i++
-      ) {
-        try {
-          const snap =
-            await this.snapshot(
-              pages[i]
-            );
-
-          diagnostics.push({
-            index: i,
-            newPage:
-              !urlsBefore.includes(
-                snap.url
-              ),
-            title:
-              snap.title,
-            url:
-              snap.url,
-            bodyPreview:
-              snap.body.slice(
-                0,
-                3000
-              )
-          });
-        } catch {}
-      }
-
-      return json({
-        status:
-          "page-builder-not-verified",
-
-        message:
-          "Edit was clicked from the verified step overview, but no builder could yet be verified.",
-
-        funnelName,
-        stepName,
-        editPoint,
-        pages:
-          diagnostics
-      }, 409);
+          message:
+            "Edit was clicked but the builder could not be verified."
+        },
+        409
+      );
     }
 
     await this.storage.put(
@@ -1674,6 +1995,7 @@ export class BrowserManager extends DurableObject {
         true,
 
       funnelName,
+
       stepName,
 
       builder:
@@ -1687,10 +2009,13 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json({
-        status:
-          "browser-unavailable"
-      }, 409);
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
     }
 
     const found =
@@ -1699,75 +2024,102 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!found) {
-      return json({
-        status:
-          "page-builder-not-open",
+      return json(
+        {
+          status:
+            "page-builder-not-open",
 
-        message:
-          "No verified HighLevel page builder is currently open."
-      }, 409);
+          message:
+            "No verified HighLevel page builder is currently open."
+        },
+        409
+      );
     }
 
     const page =
       found.page;
 
     const controls =
-      await page.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
+      await page.evaluate(
+        () => {
 
-        const visible = el => {
-          const style =
-            getComputedStyle(el);
-
-          const rect =
-            el.getBoundingClientRect();
-
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            rect.width > 0 &&
-            rect.height > 0
-          );
-        };
-
-        return Array.from(
-          document.querySelectorAll(
-            'button, a, [role="button"], [role="link"], input, textarea, select'
-          )
-        )
-          .filter(visible)
-          .map(el => ({
-            tag:
-              el.tagName.toLowerCase(),
-
-            text:
-              clean(
-                el.innerText ||
-                el.textContent ||
-                el.getAttribute(
-                  "aria-label"
-                ) ||
-                el.getAttribute(
-                  "placeholder"
+          const clean =
+            value =>
+              String(
+                value || ""
+              )
+                .replace(
+                  /\\s+/g,
+                  " "
                 )
-              ),
+                .trim();
 
-            href:
-              el.tagName === "A"
-                ? el.href
-                : ""
-          }))
-          .filter(item =>
-            item.text ||
-            item.href
+          const visible =
+            el => {
+              const style =
+                getComputedStyle(
+                  el
+                );
+
+              const rect =
+                el.getBoundingClientRect();
+
+              return (
+                style.display !==
+                  "none" &&
+                style.visibility !==
+                  "hidden" &&
+                rect.width > 0 &&
+                rect.height > 0
+              );
+            };
+
+          return Array.from(
+            document.querySelectorAll(
+              'button, a, [role="button"], [role="link"], input, textarea, select'
+            )
           )
-          .slice(0, 400);
-      });
+            .filter(
+              visible
+            )
+            .map(
+              el => ({
+                tag:
+                  el.tagName
+                    .toLowerCase(),
 
-    const frames = [];
+                text:
+                  clean(
+                    el.innerText ||
+                    el.textContent ||
+                    el.getAttribute(
+                      "aria-label"
+                    ) ||
+                    el.getAttribute(
+                      "placeholder"
+                    )
+                  ),
+
+                href:
+                  el.tagName === "A"
+                    ? el.href
+                    : ""
+              })
+            )
+            .filter(
+              item =>
+                item.text ||
+                item.href
+            )
+            .slice(
+              0,
+              400
+            );
+        }
+      );
+
+    const frames =
+      [];
 
     for (
       const frame
@@ -1798,7 +2150,870 @@ export class BrowserManager extends DurableObject {
           page.url(),
 
         controls,
+
         frames
+      }
+    });
+  }
+
+
+  async getBuilderFrame(
+    page
+  ) {
+    const frames =
+      page.frames();
+
+    const preferred =
+      frames.find(
+        frame =>
+          frame.url().includes(
+            "page-builder.leadconnectorhq.com"
+          )
+      );
+
+    if (preferred) {
+      return preferred;
+    }
+
+    /*
+     * Fallback:
+     * choose any child frame whose body contains
+     * the page content rather than the empty shell.
+     */
+    for (
+      const frame
+      of frames
+    ) {
+      if (
+        frame ===
+        page.mainFrame()
+      ) {
+        continue;
+      }
+
+      try {
+        const length =
+          await frame.evaluate(
+            () =>
+              (
+                document.body
+                  ?.innerText ||
+                ""
+              ).trim().length
+          );
+
+        if (
+          length > 200
+        ) {
+          return frame;
+        }
+
+      } catch {}
+    }
+
+    return null;
+  }
+
+
+  async inspectBuilderElements() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json(
+        {
+          status:
+            "browser-unavailable"
+        },
+        409
+      );
+    }
+
+    const found =
+      await this.findBuilderPage(
+        browser
+      );
+
+    if (!found) {
+      return json(
+        {
+          status:
+            "page-builder-not-open",
+
+          message:
+            "No verified HighLevel page builder is currently open."
+        },
+        409
+      );
+    }
+
+    const page =
+      found.page;
+
+    const frame =
+      await this.getBuilderFrame(
+        page
+      );
+
+    if (!frame) {
+      return json(
+        {
+          status:
+            "builder-content-frame-not-found",
+
+          message:
+            "The HighLevel builder is open, but its editable content frame could not be located."
+        },
+        409
+      );
+    }
+
+    const elements =
+      await frame.evaluate(
+        () => {
+
+          const clean =
+            value =>
+              String(
+                value || ""
+              )
+                .replace(
+                  /\\s+/g,
+                  " "
+                )
+                .trim();
+
+
+          const visible =
+            element => {
+              const style =
+                window.getComputedStyle(
+                  element
+                );
+
+              const rect =
+                element
+                  .getBoundingClientRect();
+
+              return (
+                style.display !==
+                  "none" &&
+                style.visibility !==
+                  "hidden" &&
+                style.opacity !==
+                  "0" &&
+                rect.width > 0 &&
+                rect.height > 0
+              );
+            };
+
+
+          const cssEscape =
+            value => {
+              try {
+                return CSS.escape(
+                  value
+                );
+
+              } catch {
+                return String(
+                  value
+                )
+                  .replace(
+                    /[^a-zA-Z0-9_-]/g,
+                    "\\\\$&"
+                  );
+              }
+            };
+
+
+          const cssPath =
+            element => {
+
+              if (
+                element.id
+              ) {
+                return (
+                  "#" +
+                  cssEscape(
+                    element.id
+                  )
+                );
+              }
+
+              const parts =
+                [];
+
+              let current =
+                element;
+
+              let depth =
+                0;
+
+              while (
+                current &&
+                current.nodeType === 1 &&
+                current !==
+                  document.body &&
+                depth < 8
+              ) {
+                let part =
+                  current.tagName
+                    .toLowerCase();
+
+                if (
+                  current.id
+                ) {
+                  part +=
+                    "#" +
+                    cssEscape(
+                      current.id
+                    );
+
+                  parts.unshift(
+                    part
+                  );
+
+                  break;
+                }
+
+                const classes =
+                  Array.from(
+                    current.classList ||
+                    []
+                  )
+                    .filter(
+                      cls =>
+                        cls &&
+                        cls.length < 80
+                    )
+                    .slice(
+                      0,
+                      2
+                    );
+
+                if (
+                  classes.length
+                ) {
+                  part +=
+                    "." +
+                    classes
+                      .map(
+                        cssEscape
+                      )
+                      .join(".");
+                }
+
+                const parent =
+                  current
+                    .parentElement;
+
+                if (parent) {
+                  const siblings =
+                    Array.from(
+                      parent.children
+                    )
+                      .filter(
+                        sibling =>
+                          sibling.tagName ===
+                          current.tagName
+                      );
+
+                  if (
+                    siblings.length >
+                    1
+                  ) {
+                    const index =
+                      siblings.indexOf(
+                        current
+                      ) + 1;
+
+                    part +=
+                      `:nth-of-type(${index})`;
+                  }
+                }
+
+                parts.unshift(
+                  part
+                );
+
+                current =
+                  current.parentElement;
+
+                depth++;
+              }
+
+              return parts.join(
+                " > "
+              );
+            };
+
+
+          const dataAttributes =
+            element => {
+
+              const result =
+                {};
+
+              for (
+                const attr
+                of Array.from(
+                  element.attributes ||
+                  []
+                )
+              ) {
+                if (
+                  attr.name.startsWith(
+                    "data-"
+                  )
+                ) {
+                  result[
+                    attr.name
+                  ] =
+                    attr.value;
+                }
+              }
+
+              return result;
+            };
+
+
+          const usefulAttributes =
+            element => {
+
+              const names =
+                [
+                  "id",
+                  "name",
+                  "role",
+                  "type",
+                  "href",
+                  "target",
+                  "contenteditable",
+                  "aria-label",
+                  "aria-labelledby",
+                  "placeholder",
+                  "title",
+                  "value"
+                ];
+
+              const output =
+                {};
+
+              for (
+                const name
+                of names
+              ) {
+                const value =
+                  element.getAttribute(
+                    name
+                  );
+
+                if (
+                  value !==
+                    null &&
+                  value !==
+                    ""
+                ) {
+                  output[
+                    name
+                  ] =
+                    value;
+                }
+              }
+
+              return output;
+            };
+
+
+          const ancestorTrail =
+            element => {
+
+              const trail =
+                [];
+
+              let current =
+                element
+                  .parentElement;
+
+              let depth =
+                0;
+
+              while (
+                current &&
+                depth < 4
+              ) {
+                trail.push({
+                  tag:
+                    current.tagName
+                      .toLowerCase(),
+
+                  id:
+                    current.id ||
+                    "",
+
+                  classes:
+                    Array.from(
+                      current.classList ||
+                      []
+                    )
+                      .slice(
+                        0,
+                        5
+                      ),
+
+                  text:
+                    clean(
+                      current
+                        .innerText ||
+                      ""
+                    ).slice(
+                      0,
+                      180
+                    ),
+
+                  data:
+                    dataAttributes(
+                      current
+                    )
+                });
+
+                current =
+                  current
+                    .parentElement;
+
+                depth++;
+              }
+
+              return trail;
+            };
+
+
+          const classify =
+            element => {
+
+              const tag =
+                element.tagName
+                  .toLowerCase();
+
+              const role =
+                (
+                  element.getAttribute(
+                    "role"
+                  ) ||
+                  ""
+                )
+                  .toLowerCase();
+
+              const contenteditable =
+                element.isContentEditable ||
+                element.getAttribute(
+                  "contenteditable"
+                ) ===
+                  "true";
+
+              if (
+                /^h[1-6]$/.test(
+                  tag
+                )
+              ) {
+                return "heading";
+              }
+
+              if (
+                tag ===
+                  "button" ||
+                role ===
+                  "button"
+              ) {
+                return "button";
+              }
+
+              if (
+                tag ===
+                "a"
+              ) {
+                return "link";
+              }
+
+              if (
+                tag ===
+                  "input" ||
+                tag ===
+                  "textarea" ||
+                tag ===
+                  "select"
+              ) {
+                return "input";
+              }
+
+              if (
+                contenteditable
+              ) {
+                return "contenteditable";
+              }
+
+              if (
+                tag ===
+                  "p" ||
+                tag ===
+                  "span" ||
+                tag ===
+                  "div" ||
+                tag ===
+                  "li"
+              ) {
+                return "text";
+              }
+
+              return "other";
+            };
+
+
+          const selector =
+            [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "h6",
+              "p",
+              "span",
+              "div",
+              "li",
+              "button",
+              "a",
+              "input",
+              "textarea",
+              "select",
+              "[contenteditable='true']",
+              "[role='button']",
+              "[data-element-type]",
+              "[data-id]",
+              "[data-uuid]"
+            ].join(",");
+
+
+          const all =
+            Array.from(
+              document
+                .querySelectorAll(
+                  selector
+                )
+            )
+              .filter(
+                visible
+              );
+
+
+          const records =
+            [];
+
+          let index =
+            0;
+
+          for (
+            const element
+            of all
+          ) {
+            const text =
+              clean(
+                element.innerText ||
+                element.textContent ||
+                element.getAttribute(
+                  "aria-label"
+                ) ||
+                element.getAttribute(
+                  "placeholder"
+                ) ||
+                ""
+              );
+
+            const tag =
+              element.tagName
+                .toLowerCase();
+
+            const type =
+              classify(
+                element
+              );
+
+            const rect =
+              element
+                .getBoundingClientRect();
+
+            const style =
+              window
+                .getComputedStyle(
+                  element
+                );
+
+            const contenteditable =
+              Boolean(
+                element
+                  .isContentEditable ||
+                element.getAttribute(
+                  "contenteditable"
+                ) ===
+                  "true"
+              );
+
+            const data =
+              dataAttributes(
+                element
+              );
+
+            const attrs =
+              usefulAttributes(
+                element
+              );
+
+            const hasUsefulData =
+              Object.keys(
+                data
+              ).length > 0;
+
+            const isUseful =
+              text ||
+              contenteditable ||
+              type ===
+                "input" ||
+              type ===
+                "button" ||
+              type ===
+                "link" ||
+              hasUsefulData;
+
+            if (
+              !isUseful
+            ) {
+              continue;
+            }
+
+            records.push({
+              elementKey:
+                `el-${String(
+                  index
+                ).padStart(
+                  4,
+                  "0"
+                )}`,
+
+              type,
+
+              tag,
+
+              text:
+                text.slice(
+                  0,
+                  500
+                ),
+
+              selector:
+                cssPath(
+                  element
+                ),
+
+              id:
+                element.id ||
+                "",
+
+              classes:
+                Array.from(
+                  element.classList ||
+                  []
+                )
+                  .slice(
+                    0,
+                    10
+                  ),
+
+              contenteditable,
+
+              cursor:
+                style.cursor,
+
+              display:
+                style.display,
+
+              position:
+                style.position,
+
+              attributes:
+                attrs,
+
+              dataAttributes:
+                data,
+
+              rect: {
+                x:
+                  Math.round(
+                    rect.x
+                  ),
+
+                y:
+                  Math.round(
+                    rect.y
+                  ),
+
+                width:
+                  Math.round(
+                    rect.width
+                  ),
+
+                height:
+                  Math.round(
+                    rect.height
+                  )
+              },
+
+              parent:
+                element
+                  .parentElement
+                  ? {
+                      tag:
+                        element
+                          .parentElement
+                          .tagName
+                          .toLowerCase(),
+
+                      id:
+                        element
+                          .parentElement
+                          .id ||
+                        "",
+
+                      classes:
+                        Array.from(
+                          element
+                            .parentElement
+                            .classList ||
+                          []
+                        )
+                          .slice(
+                            0,
+                            8
+                          ),
+
+                      text:
+                        clean(
+                          element
+                            .parentElement
+                            .innerText ||
+                          ""
+                        ).slice(
+                          0,
+                          250
+                        )
+                    }
+                  : null,
+
+              ancestors:
+                ancestorTrail(
+                  element
+                )
+            });
+
+            index++;
+
+            if (
+              records.length >=
+              600
+            ) {
+              break;
+            }
+          }
+
+
+          const likelyEditable =
+            records.filter(
+              item =>
+                item.contenteditable ||
+                item.type ===
+                  "input" ||
+                item.type ===
+                  "heading" ||
+                item.type ===
+                  "button" ||
+                item.type ===
+                  "link" ||
+                (
+                  item.type ===
+                    "text" &&
+                  item.text
+                    .length >
+                    0 &&
+                  (
+                    item.cursor ===
+                      "text" ||
+                    Object.keys(
+                      item
+                        .dataAttributes
+                    ).length >
+                      0
+                  )
+                )
+            );
+
+
+          return {
+            frameUrl:
+              location.href,
+
+            pageTitle:
+              document.title,
+
+            totalCandidates:
+              records.length,
+
+            editableCandidateCount:
+              likelyEditable.length,
+
+            editableCandidates:
+              likelyEditable.slice(
+                0,
+                350
+              ),
+
+            allCandidates:
+              records.slice(
+                0,
+                600
+              )
+          };
+        }
+      );
+
+
+    return json({
+      status:
+        "builder-elements-inspection-success",
+
+      verified:
+        true,
+
+      readOnly:
+        true,
+
+      builder: {
+        outerUrl:
+          page.url(),
+
+        contentFrameUrl:
+          frame.url(),
+
+        currentFunnel:
+          await this.storage.get(
+            "currentFunnelName"
+          ) || null,
+
+        currentStep:
+          await this.storage.get(
+            "currentStepName"
+          ) || null,
+
+        elements
       }
     });
   }
@@ -1820,7 +3035,9 @@ export class BrowserManager extends DurableObject {
       reachable =
         true;
 
-    } else if (sessionId) {
+    } else if (
+      sessionId
+    ) {
       try {
         this.browser =
           await puppeteer.connect(
@@ -1831,18 +3048,23 @@ export class BrowserManager extends DurableObject {
         reachable =
           Boolean(
             this.browser &&
-            this.browser.isConnected()
+            this.browser
+              .isConnected()
           );
 
       } catch {
-        reachable = false;
+        reachable =
+          false;
       }
     }
+
 
     let builderOpen =
       false;
 
-    if (reachable) {
+    if (
+      reachable
+    ) {
       try {
         builderOpen =
           Boolean(
@@ -1850,14 +3072,18 @@ export class BrowserManager extends DurableObject {
               this.browser
             )
           );
+
       } catch {}
     }
 
+
     return json({
-      status: "ok",
+      status:
+        "ok",
 
       sessionId:
-        sessionId || null,
+        sessionId ||
+        null,
 
       browserReachable:
         reachable,
@@ -1889,7 +3115,9 @@ export class BrowserManager extends DurableObject {
 
   async fetch(request) {
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     try {
       switch (
@@ -1899,48 +3127,66 @@ export class BrowserManager extends DurableObject {
         case "/api/login/start":
           return await this.startLoginBrowser();
 
+
         case "/api/status":
           return await this.status();
 
+
         case "/api/sites/inspect":
           return await this.inspectFunnels();
+
 
         case "/api/funnel/open":
           return await this.openFunnel(
             request
           );
 
+
         case "/api/funnel/steps":
           return await this.listFunnelSteps();
+
 
         case "/api/funnel/step/inspect":
           return await this.inspectFunnelStep(
             request
           );
 
+
         case "/api/builder/open":
           return await this.openPageBuilder();
+
 
         case "/api/builder/inspect":
           return await this.inspectPageBuilder();
 
+
+        case "/api/builder/elements":
+          return await this.inspectBuilderElements();
+
+
         default:
-          return json({
-            error:
-              "Unknown action"
-          }, 404);
+          return json(
+            {
+              error:
+                "Unknown action"
+            },
+            404
+          );
       }
 
     } catch (error) {
-      return json({
-        status:
-          "error",
+      return json(
+        {
+          status:
+            "error",
 
-        message:
-          error instanceof Error
-            ? error.message
-            : String(error)
-      }, 500);
+          message:
+            error instanceof Error
+              ? error.message
+              : String(error)
+        },
+        500
+      );
     }
   }
 }
