@@ -31,27 +31,23 @@ function controlPage() {
       margin: 40px auto;
       padding: 0 20px;
     }
-
     input {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
       margin: 8px 0 15px;
     }
-
     button {
       padding: 11px 15px;
       margin: 4px;
       cursor: pointer;
     }
-
     pre {
       background: #f4f4f4;
       padding: 15px;
       white-space: pre-wrap;
       word-break: break-word;
     }
-
     section {
       margin: 25px 0;
       padding-bottom: 15px;
@@ -88,7 +84,7 @@ function controlPage() {
 
   <input
     id="funnelName"
-    placeholder="Funnel name e.g. GCB Online Coaching Landing Page- Black"
+    placeholder="Funnel name"
   >
 
   <button onclick="runWithBody('/api/funnel/open', {
@@ -103,7 +99,7 @@ function controlPage() {
 </section>
 
 <section>
-  <h3>Step / Page</h3>
+  <h3>Step</h3>
 
   <input
     id="stepName"
@@ -113,7 +109,7 @@ function controlPage() {
   <button onclick="runWithBody('/api/funnel/step/inspect', {
     name: document.getElementById('stepName').value
   })">
-    Inspect Step
+    Select / Inspect Step
   </button>
 </section>
 
@@ -162,9 +158,7 @@ async function runWithBody(path, body) {
     });
 
     const data = await response.json();
-
-    result.textContent =
-      JSON.stringify(data, null, 2);
+    result.textContent = JSON.stringify(data, null, 2);
 
   } catch (error) {
     result.textContent = String(error);
@@ -191,48 +185,28 @@ export default {
     }
 
     if (!url.pathname.startsWith("/api/")) {
-      return json(
-        { error: "Not found" },
-        404
-      );
+      return json({ error: "Not found" }, 404);
     }
 
     if (!env.BROWSER_ADMIN_KEY) {
-      return json(
-        {
-          error:
-            "BROWSER_ADMIN_KEY is not configured."
-        },
-        503
-      );
+      return json({
+        error: "BROWSER_ADMIN_KEY is not configured."
+      }, 503);
     }
 
     const suppliedKey =
-      request.headers.get(
-        "x-admin-key"
-      );
+      request.headers.get("x-admin-key");
 
-    if (
-      suppliedKey !==
-      env.BROWSER_ADMIN_KEY
-    ) {
-      return json(
-        { error: "Unauthorized" },
-        401
-      );
+    if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
+      return json({ error: "Unauthorized" }, 401);
     }
 
     if (request.method !== "POST") {
-      return json(
-        { error: "Method not allowed" },
-        405
-      );
+      return json({ error: "Method not allowed" }, 405);
     }
 
     const object =
-      env.BROWSER_MANAGER.getByName(
-        "cga-ghl"
-      );
+      env.BROWSER_MANAGER.getByName("cga-ghl");
 
     return object.fetch(request);
   }
@@ -287,10 +261,8 @@ export class BrowserManager extends DurableObject {
     await page.goto(
       `${GHL_BASE}/`,
       {
-        waitUntil:
-          "domcontentloaded",
-        timeout:
-          30000
+        waitUntil: "domcontentloaded",
+        timeout: 30000
       }
     );
 
@@ -303,13 +275,9 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status:
-        "login-browser-ready",
-
+      status: "login-browser-ready",
       sessionId,
-
-      pageUrl:
-        page.url()
+      pageUrl: page.url()
     });
   }
 
@@ -361,45 +329,26 @@ export class BrowserManager extends DurableObject {
 
   async chooseHighLevelPage(browser) {
     const pages =
-      await this.highLevelPages(
-        browser
-      );
+      await this.highLevelPages(browser);
 
     if (!pages.length) {
       return null;
     }
 
-    /*
-     * Prefer a builder/editor tab if one exists.
-     */
-    for (const page of pages) {
-      try {
-        const builder =
-          await this.detectBuilder(
-            page
-          );
+    const builder =
+      await this.findBuilderPage(browser);
 
-        if (builder.isBuilder) {
-          return page;
-        }
-      } catch {}
+    if (builder) {
+      return builder.page;
     }
 
-    /*
-     * Then prefer funnel detail/overview.
-     */
     const funnelDetail =
       pages.find(page => {
-        const url =
-          page.url();
+        const url = page.url();
 
         return (
-          url.includes(
-            "/funnels-websites/"
-          ) &&
-          !url.endsWith(
-            "/funnels"
-          )
+          url.includes("/funnels-websites/") &&
+          !url.endsWith("/funnels")
         );
       });
 
@@ -407,36 +356,18 @@ export class BrowserManager extends DurableObject {
       return funnelDetail;
     }
 
-    /*
-     * Then funnel list.
-     */
     const funnels =
-      pages.find(
-        page =>
-          page.url().includes(
-            "/funnels-websites/funnels"
-          )
+      pages.find(page =>
+        page.url().includes(
+          "/funnels-websites/funnels"
+        )
       );
 
     if (funnels) {
       return funnels;
     }
 
-    /*
-     * Then any HighLevel location page.
-     */
-    const location =
-      pages.find(
-        page =>
-          page.url().includes(
-            "/v2/location/"
-          )
-      );
-
-    return (
-      location ||
-      pages[pages.length - 1]
-    );
+    return pages[pages.length - 1];
   }
 
 
@@ -446,26 +377,20 @@ export class BrowserManager extends DurableObject {
   ) {
     await page.waitForSelector(
       "body",
-      {
-        timeout: 15000
-      }
+      { timeout: 15000 }
     );
 
     try {
       await page.waitForFunction(
         () => {
           const text =
-            (
-              document.body
-                ?.innerText ||
-              ""
-            )
+            (document.body?.innerText || "")
               .replace(/\\s+/g, " ")
               .trim()
               .toLowerCase();
 
           return (
-            text.length > 30 &&
+            text.length > 20 &&
             !text.includes(
               "loading fresh data"
             )
@@ -482,7 +407,7 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  async getPageSnapshot(page) {
+  async snapshot(page) {
     return page.evaluate(() => {
       const clean = value =>
         String(value || "")
@@ -490,640 +415,38 @@ export class BrowserManager extends DurableObject {
           .trim();
 
       return {
-        title:
-          document.title,
-
-        url:
-          window.location.href,
-
+        title: document.title,
+        url: location.href,
         body:
           clean(
-            document.body
-              ?.innerText ||
-            ""
-          ).slice(
-            0,
-            12000
-          )
+            document.body?.innerText || ""
+          ).slice(0, 15000)
       };
     });
   }
 
 
-  /*
-   * ---------------------------------------------------
-   * FUNNEL LIST
-   * ---------------------------------------------------
-   */
-
-
-  async findFunnelClickPoint(
+  async findExactClickPoint(
     page,
-    funnelName
-  ) {
-    return page.evaluate(name => {
-      const clean = value =>
-        String(value || "")
-          .replace(/\\s+/g, " ")
-          .trim();
-
-      const wanted =
-        clean(name)
-          .toLowerCase();
-
-      const rows =
-        Array.from(
-          document.querySelectorAll(
-            'tr, [role="row"]'
-          )
-        );
-
-      const row =
-        rows.find(element => {
-          const text =
-            clean(
-              element.innerText ||
-              element.textContent
-            )
-              .toLowerCase();
-
-          return text.includes(
-            wanted
-          );
-        });
-
-      if (!row) {
-        return null;
-      }
-
-      const descendants =
-        Array.from(
-          row.querySelectorAll(
-            "div, span, a, button"
-          )
-        );
-
-      const target =
-        descendants.find(
-          element => {
-            const text =
-              clean(
-                element.innerText ||
-                element.textContent
-              )
-                .toLowerCase();
-
-            const style =
-              window.getComputedStyle(
-                element
-              );
-
-            const rect =
-              element
-                .getBoundingClientRect();
-
-            return (
-              text === wanted &&
-              style.cursor ===
-                "pointer" &&
-              rect.width > 20 &&
-              rect.height > 10
-            );
-          }
-        );
-
-      if (!target) {
-        return {
-          found: false,
-
-          rowText:
-            clean(
-              row.innerText ||
-              row.textContent
-            )
-        };
-      }
-
-      target.scrollIntoView({
-        block: "center",
-        inline: "center"
-      });
-
-      const rect =
-        target
-          .getBoundingClientRect();
-
-      return {
-        found: true,
-
-        tag:
-          target.tagName
-            .toLowerCase(),
-
-        text:
-          clean(
-            target.innerText ||
-            target.textContent
-          ),
-
-        cursor:
-          window
-            .getComputedStyle(
-              target
-            )
-            .cursor,
-
-        x:
-          rect.left +
-          rect.width / 2,
-
-        y:
-          rect.top +
-          rect.height / 2,
-
-        width:
-          rect.width,
-
-        height:
-          rect.height
-      };
-
-    }, funnelName);
-  }
-
-
-  async inspectFunnels() {
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
-    }
-
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
-
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
-    }
-
-    const funnelsUrl =
-      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
-
-    if (
-      page.url() !==
-      funnelsUrl
-    ) {
-      await page.goto(
-        funnelsUrl,
-        {
-          waitUntil:
-            "domcontentloaded",
-          timeout:
-            30000
-        }
-      );
-    }
-
-    await this.waitForHighLevel(
-      page
-    );
-
-    const data =
-      await page.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
-
-        const rows =
-          Array.from(
-            document.querySelectorAll(
-              'tr, [role="row"], [class*="card"]'
-            )
-          )
-            .map(row =>
-              clean(
-                row.innerText ||
-                row.textContent
-              )
-            )
-            .filter(Boolean);
-
-        return {
-          title:
-            document.title,
-
-          url:
-            location.href,
-
-          bodyPreview:
-            clean(
-              document.body
-                ?.innerText ||
-              ""
-            ).slice(
-              0,
-              8000
-            ),
-
-          rows
-        };
-      });
-
-    return json({
-      status:
-        "funnels-inspection-success",
-
-      readOnly:
-        true,
-
-      funnels:
-        data
-    });
-  }
-
-
-  async openFunnel(request) {
-    const args =
-      await this.body(
-        request
-      );
-
-    const name =
-      String(
-        args.name || ""
-      ).trim();
-
-    if (!name) {
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            "Funnel name is required."
-        },
-        400
-      );
-    }
-
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
-    }
-
-    let page =
-      await this.chooseHighLevelPage(
-        browser
-      );
-
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
-    }
-
-    const funnelsUrl =
-      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
-
-    if (
-      page.url() !==
-      funnelsUrl
-    ) {
-      await page.goto(
-        funnelsUrl,
-        {
-          waitUntil:
-            "domcontentloaded",
-          timeout:
-            30000
-        }
-      );
-    }
-
-    await this.waitForHighLevel(
-      page
-    );
-
-    const before =
-      await this.getPageSnapshot(
-        page
-      );
-
-    const clickPoint =
-      await this.findFunnelClickPoint(
-        page,
-        name
-      );
-
-    if (
-      !clickPoint ||
-      !clickPoint.found
-    ) {
-      return json(
-        {
-          status:
-            "funnel-click-target-not-found",
-
-          funnelName:
-            name,
-
-          clickPoint
-        },
-        404
-      );
-    }
-
-    await page.mouse.move(
-      clickPoint.x,
-      clickPoint.y
-    );
-
-    await sleep(150);
-
-    await page.mouse.down();
-
-    await sleep(100);
-
-    await page.mouse.up();
-
-    try {
-      await page.waitForFunction(
-        oldUrl =>
-          window.location.href !==
-          oldUrl,
-        {
-          timeout:
-            20000,
-          polling:
-            300
-        },
-        before.url
-      );
-    } catch {}
-
-    await sleep(1500);
-
-    const after =
-      await this.getPageSnapshot(
-        page
-      );
-
-    const stillOnList =
-      after.url.endsWith(
-        "/funnels-websites/funnels"
-      ) &&
-      after.body
-        .toLowerCase()
-        .includes(
-          "search for funnels"
-        );
-
-    if (stillOnList) {
-      return json(
-        {
-          status:
-            "funnel-click-did-not-open",
-
-          funnelName:
-            name,
-
-          clickPoint,
-
-          before: {
-            url:
-              before.url,
-
-            title:
-              before.title
-          },
-
-          after: {
-            url:
-              after.url,
-
-            title:
-              after.title,
-
-            bodyPreview:
-              after.body.slice(
-                0,
-                3000
-              )
-          }
-        },
-        409
-      );
-    }
-
-    await this.storage.put(
-      "currentFunnelName",
-      name
-    );
-
-    await this.storage.put(
-      "currentFunnelUrl",
-      after.url
-    );
-
-    return json({
-      status:
-        "funnel-opened",
-
-      verified:
-        true,
-
-      funnelName:
-        name,
-
-      clickTarget:
-        clickPoint,
-
-      page: {
-        title:
-          after.title,
-
-        url:
-          after.url,
-
-        bodyPreview:
-          after.body.slice(
-            0,
-            8000
-          )
-      }
-    });
-  }
-
-
-  /*
-   * ---------------------------------------------------
-   * FUNNEL STEP
-   * ---------------------------------------------------
-   */
-
-
-  async listFunnelSteps() {
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
-    }
-
-    const page =
-      await this.chooseHighLevelPage(
-        browser
-      );
-
-    if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
-    }
-
-    await this.waitForHighLevel(
-      page
-    );
-
-    const result =
-      await page.evaluate(() => {
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
-
-        const candidates =
-          Array.from(
-            document.querySelectorAll(
-              'a, button, tr, [role="row"], [role="button"], [role="link"], [class*="card"]'
-            )
-          )
-            .map(el => ({
-              tag:
-                el.tagName
-                  .toLowerCase(),
-
-              text:
-                clean(
-                  el.innerText ||
-                  el.textContent
-                ),
-
-              href:
-                el.tagName === "A"
-                  ? el.href
-                  : ""
-            }))
-            .filter(
-              item =>
-                item.text ||
-                item.href
-            );
-
-        return {
-          title:
-            document.title,
-
-          url:
-            location.href,
-
-          bodyPreview:
-            clean(
-              document.body
-                ?.innerText ||
-              ""
-            ).slice(
-              0,
-              10000
-            ),
-
-          candidates:
-            candidates.slice(
-              0,
-              250
-            )
-        };
-      });
-
-    return json({
-      status:
-        "funnel-steps-inspection-success",
-
-      currentFunnel:
-        await this.storage.get(
-          "currentFunnelName"
-        ),
-
-      currentFunnelUrl:
-        await this.storage.get(
-          "currentFunnelUrl"
-        ),
-
-      readOnly:
-        true,
-
-      result
-    });
-  }
-
-
-  async findExactTextClickPoint(
-    page,
-    targetText
+    text,
+    preferPointer = true
   ) {
     return page.evaluate(
-      target => {
+      ({ targetText, preferPointer }) => {
+
         const clean = value =>
           String(value || "")
             .replace(/\\s+/g, " ")
             .trim();
 
         const wanted =
-          clean(target)
+          clean(targetText)
             .toLowerCase();
 
         const elements =
           Array.from(
             document.querySelectorAll(
-              'button, a, [role="button"], [role="link"], div, span'
+              'button, a, [role="button"], [role="link"], div, span, td'
             )
           );
 
@@ -1144,10 +467,9 @@ export class BrowserManager extends DurableObject {
                   .getBoundingClientRect();
 
               const style =
-                window
-                  .getComputedStyle(
-                    element
-                  );
+                window.getComputedStyle(
+                  element
+                );
 
               return {
                 element,
@@ -1164,19 +486,12 @@ export class BrowserManager extends DurableObject {
                 width:
                   rect.width,
                 height:
-                  rect.height,
-                x:
-                  rect.left +
-                  rect.width / 2,
-                y:
-                  rect.top +
-                  rect.height / 2
+                  rect.height
               };
             })
             .filter(item =>
               item.text
-                .toLowerCase() ===
-                wanted &&
+                .toLowerCase() === wanted &&
               item.width > 0 &&
               item.height > 0
             );
@@ -1185,38 +500,34 @@ export class BrowserManager extends DurableObject {
           return null;
         }
 
-        /*
-         * Prefer a real button/role button.
-         */
         const preferred =
-          matches.find(
-            item =>
-              item.tag ===
-                "button" ||
-              item.role ===
-                "button"
+          matches.find(item =>
+            item.tag === "button"
           ) ||
-          matches.find(
-            item =>
-              item.tag === "a"
+          matches.find(item =>
+            item.role === "button"
           ) ||
-          matches.find(
-            item =>
-              item.cursor ===
-                "pointer"
+          matches.find(item =>
+            item.tag === "a"
+          ) ||
+          (
+            preferPointer
+              ? matches.find(
+                  item =>
+                    item.cursor ===
+                    "pointer"
+                )
+              : null
           ) ||
           matches[0];
 
-        preferred
-          .element
-          .scrollIntoView({
-            block: "center",
-            inline: "center"
-          });
+        preferred.element.scrollIntoView({
+          block: "center",
+          inline: "center"
+        });
 
         const rect =
-          preferred
-            .element
+          preferred.element
             .getBoundingClientRect();
 
         return {
@@ -1248,28 +559,18 @@ export class BrowserManager extends DurableObject {
         };
 
       },
-      targetText
+      {
+        targetText: text,
+        preferPointer
+      }
     );
   }
 
 
-  async clickExactText(
+  async realClick(
     page,
-    text
+    point
   ) {
-    const point =
-      await this.findExactTextClickPoint(
-        page,
-        text
-      );
-
-    if (!point) {
-      return {
-        clicked: false,
-        target: text
-      };
-    }
-
     await page.mouse.move(
       point.x,
       point.y
@@ -1283,133 +584,394 @@ export class BrowserManager extends DurableObject {
 
     await page.mouse.up();
 
-    return {
-      clicked: true,
-      target: text,
-      point
-    };
+    await sleep(500);
   }
 
 
-  async inspectFunnelStep(
-    request
+  async findFunnelClickPoint(
+    page,
+    funnelName
   ) {
-    const args =
-      await this.body(
-        request
-      );
+    return page.evaluate(name => {
+      const clean = value =>
+        String(value || "")
+          .replace(/\\s+/g, " ")
+          .trim();
 
-    const name =
-      String(
-        args.name || ""
-      ).trim();
+      const wanted =
+        clean(name).toLowerCase();
 
-    if (!name) {
-      return json(
+      const rows =
+        Array.from(
+          document.querySelectorAll(
+            'tr, [role="row"]'
+          )
+        );
+
+      const row =
+        rows.find(element => {
+          const text =
+            clean(
+              element.innerText ||
+              element.textContent
+            ).toLowerCase();
+
+          return text.includes(wanted);
+        });
+
+      if (!row) {
+        return null;
+      }
+
+      const targets =
+        Array.from(
+          row.querySelectorAll(
+            "div, span, a, button"
+          )
+        );
+
+      const target =
+        targets.find(element => {
+          const text =
+            clean(
+              element.innerText ||
+              element.textContent
+            ).toLowerCase();
+
+          const style =
+            getComputedStyle(element);
+
+          const rect =
+            element.getBoundingClientRect();
+
+          return (
+            text === wanted &&
+            style.cursor === "pointer" &&
+            rect.width > 20 &&
+            rect.height > 10
+          );
+        });
+
+      if (!target) {
+        return null;
+      }
+
+      target.scrollIntoView({
+        block: "center",
+        inline: "center"
+      });
+
+      const rect =
+        target.getBoundingClientRect();
+
+      return {
+        x:
+          rect.left +
+          rect.width / 2,
+
+        y:
+          rect.top +
+          rect.height / 2,
+
+        width:
+          rect.width,
+
+        height:
+          rect.height,
+
+        tag:
+          target.tagName
+            .toLowerCase()
+      };
+
+    }, funnelName);
+  }
+
+
+  async navigateToFunnels(page) {
+    const funnelsUrl =
+      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
+
+    if (
+      page.url() !==
+      funnelsUrl
+    ) {
+      await page.goto(
+        funnelsUrl,
         {
-          status:
-            "error",
-
-          message:
-            "Step/page name is required."
-        },
-        400
+          waitUntil:
+            "domcontentloaded",
+          timeout:
+            30000
+        }
       );
     }
 
+    await this.waitForHighLevel(page);
+
+    return funnelsUrl;
+  }
+
+
+  async openStoredFunnel(
+    page,
+    funnelName
+  ) {
+    await this.navigateToFunnels(
+      page
+    );
+
+    const before =
+      await this.snapshot(page);
+
+    const point =
+      await this.findFunnelClickPoint(
+        page,
+        funnelName
+      );
+
+    if (!point) {
+      throw new Error(
+        `Could not find clickable funnel row for "${funnelName}".`
+      );
+    }
+
+    await this.realClick(
+      page,
+      point
+    );
+
+    try {
+      await page.waitForFunction(
+        oldUrl =>
+          location.href !== oldUrl,
+        {
+          timeout: 20000,
+          polling: 300
+        },
+        before.url
+      );
+    } catch {}
+
+    await sleep(1200);
+
+    const after =
+      await this.snapshot(page);
+
+    const stillList =
+      after.url.endsWith(
+        "/funnels-websites/funnels"
+      ) &&
+      after.body
+        .toLowerCase()
+        .includes(
+          "search for funnels"
+        );
+
+    if (stillList) {
+      throw new Error(
+        `Funnel "${funnelName}" was clicked but did not open.`
+      );
+    }
+
+    await this.storage.put(
+      "currentFunnelName",
+      funnelName
+    );
+
+    await this.storage.put(
+      "currentFunnelUrl",
+      after.url
+    );
+
+    return after;
+  }
+
+
+  async ensureFunnelOpen(
+    page,
+    funnelName
+  ) {
+    const snap =
+      await this.snapshot(page);
+
+    const bodyLower =
+      snap.body.toLowerCase();
+
+    if (
+      bodyLower.includes(
+        funnelName.toLowerCase()
+      ) &&
+      !bodyLower.includes(
+        "search for funnels"
+      )
+    ) {
+      return snap;
+    }
+
+    return this.openStoredFunnel(
+      page,
+      funnelName
+    );
+  }
+
+
+  async selectStepOverview(
+    page,
+    stepName
+  ) {
+    const current =
+      await this.snapshot(page);
+
+    const lower =
+      current.body.toLowerCase();
+
+    /*
+     * If the correct step is already selected
+     * and its overview controls are present,
+     * do nothing.
+     */
+    if (
+      lower.includes(
+        stepName.toLowerCase()
+      ) &&
+      lower.includes("overview") &&
+      lower.includes("products") &&
+      lower.includes("publishing") &&
+      lower.includes("edit")
+    ) {
+      await this.storage.put(
+        "currentStepName",
+        stepName
+      );
+
+      return current;
+    }
+
+    const point =
+      await this.findExactClickPoint(
+        page,
+        stepName,
+        true
+      );
+
+    if (!point) {
+      throw new Error(
+        `Could not find step "${stepName}" in the current funnel.`
+      );
+    }
+
+    const before =
+      await this.snapshot(page);
+
+    await this.realClick(
+      page,
+      point
+    );
+
+    try {
+      await page.waitForFunction(
+        ({ oldUrl, step }) => {
+          const body =
+            (
+              document.body
+                ?.innerText ||
+              ""
+            ).toLowerCase();
+
+          return (
+            location.href !== oldUrl ||
+            (
+              body.includes(
+                step.toLowerCase()
+              ) &&
+              body.includes(
+                "overview"
+              ) &&
+              body.includes(
+                "publishing"
+              )
+            )
+          );
+        },
+        {
+          timeout:
+            15000,
+          polling:
+            300
+        },
+        {
+          oldUrl:
+            before.url,
+          step:
+            stepName
+        }
+      );
+    } catch {}
+
+    await sleep(1200);
+
+    const after =
+      await this.snapshot(page);
+
+    const afterLower =
+      after.body.toLowerCase();
+
+    if (
+      !afterLower.includes(
+        stepName.toLowerCase()
+      ) ||
+      !afterLower.includes(
+        "edit"
+      )
+    ) {
+      throw new Error(
+        `Step "${stepName}" was clicked but its overview could not be verified.`
+      );
+    }
+
+    await this.storage.put(
+      "currentStepName",
+      stepName
+    );
+
+    return after;
+  }
+
+
+  async inspectFunnels() {
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
     }
 
-    const page =
+    let page =
       await this.chooseHighLevelPage(
         browser
       );
 
     if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+      return json({
+        status:
+          "no-highlevel-page"
+      }, 409);
     }
 
-    await this.waitForHighLevel(
+    await this.navigateToFunnels(
       page
     );
 
-    const clickResult =
-      await this.clickExactText(
-        page,
-        name
-      );
-
-    if (!clickResult.clicked) {
-      return json(
-        {
-          status:
-            "step-not-found",
-
-          stepName:
-            name
-        },
-        404
-      );
-    }
-
-    await sleep(1800);
-
-    const result =
+    const data =
       await page.evaluate(() => {
         const clean = value =>
           String(value || "")
             .replace(/\\s+/g, " ")
             .trim();
-
-        const text =
-          clean(
-            document.body
-              ?.innerText ||
-            ""
-          );
-
-        const controls =
-          Array.from(
-            document.querySelectorAll(
-              'a, button, [role="button"], [role="link"]'
-            )
-          )
-            .map(el => ({
-              text:
-                clean(
-                  el.innerText ||
-                  el.textContent ||
-                  el.getAttribute(
-                    "aria-label"
-                  )
-                ),
-
-              href:
-                el.tagName === "A"
-                  ? el.href
-                  : ""
-            }))
-            .filter(
-              item =>
-                item.text ||
-                item.href
-            );
 
         return {
           title:
@@ -1418,18 +980,265 @@ export class BrowserManager extends DurableObject {
           url:
             location.href,
 
-          bodyPreview:
-            text.slice(
-              0,
-              12000
-            ),
+          rows:
+            Array.from(
+              document.querySelectorAll(
+                'tr, [role="row"]'
+              )
+            )
+              .map(row =>
+                clean(
+                  row.innerText ||
+                  row.textContent
+                )
+              )
+              .filter(Boolean),
 
-          controls:
-            controls.slice(
+          bodyPreview:
+            clean(
+              document.body
+                ?.innerText ||
+              ""
+            ).slice(
               0,
-              250
+              8000
             )
         };
+      });
+
+    return json({
+      status:
+        "funnels-inspection-success",
+
+      readOnly:
+        true,
+
+      funnels:
+        data
+    });
+  }
+
+
+  async openFunnel(request) {
+    const args =
+      await this.body(request);
+
+    const name =
+      String(
+        args.name || ""
+      ).trim();
+
+    if (!name) {
+      return json({
+        status: "error",
+        message:
+          "Funnel name is required."
+      }, 400);
+    }
+
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
+    }
+
+    let page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status:
+          "no-highlevel-page"
+      }, 409);
+    }
+
+    const result =
+      await this.openStoredFunnel(
+        page,
+        name
+      );
+
+    return json({
+      status:
+        "funnel-opened",
+
+      verified:
+        true,
+
+      funnelName:
+        name,
+
+      page: {
+        title:
+          result.title,
+
+        url:
+          result.url,
+
+        bodyPreview:
+          result.body.slice(
+            0,
+            8000
+          )
+      }
+    });
+  }
+
+
+  async listFunnelSteps() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
+    }
+
+    const page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status:
+          "no-highlevel-page"
+      }, 409);
+    }
+
+    await this.waitForHighLevel(page);
+
+    const data =
+      await this.snapshot(page);
+
+    return json({
+      status:
+        "funnel-steps-inspection-success",
+
+      readOnly:
+        true,
+
+      currentFunnel:
+        await this.storage.get(
+          "currentFunnelName"
+        ) || null,
+
+      result: {
+        title:
+          data.title,
+
+        url:
+          data.url,
+
+        bodyPreview:
+          data.body.slice(
+            0,
+            12000
+          )
+      }
+    });
+  }
+
+
+  async inspectFunnelStep(request) {
+    const args =
+      await this.body(request);
+
+    const name =
+      String(
+        args.name || ""
+      ).trim();
+
+    if (!name) {
+      return json({
+        status:
+          "error",
+
+        message:
+          "Step/page name is required."
+      }, 400);
+    }
+
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
+    }
+
+    const page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status:
+          "no-highlevel-page"
+      }, 409);
+    }
+
+    const funnelName =
+      await this.storage.get(
+        "currentFunnelName"
+      );
+
+    if (funnelName) {
+      await this.ensureFunnelOpen(
+        page,
+        funnelName
+      );
+    }
+
+    const result =
+      await this.selectStepOverview(
+        page,
+        name
+      );
+
+    const controls =
+      await page.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
+
+        return Array.from(
+          document.querySelectorAll(
+            'a, button, [role="button"], [role="link"]'
+          )
+        )
+          .map(el => ({
+            text:
+              clean(
+                el.innerText ||
+                el.textContent ||
+                el.getAttribute(
+                  "aria-label"
+                )
+              ),
+
+            href:
+              el.tagName === "A"
+                ? el.href
+                : ""
+          }))
+          .filter(item =>
+            item.text ||
+            item.href
+          )
+          .slice(0, 250);
       });
 
     return json({
@@ -1442,16 +1251,23 @@ export class BrowserManager extends DurableObject {
       readOnly:
         true,
 
-      result
+      result: {
+        title:
+          result.title,
+
+        url:
+          result.url,
+
+        bodyPreview:
+          result.body.slice(
+            0,
+            12000
+          ),
+
+        controls
+      }
     });
   }
-
-
-  /*
-   * ---------------------------------------------------
-   * BUILDER DETECTION
-   * ---------------------------------------------------
-   */
 
 
   async inspectFrame(frame) {
@@ -1462,7 +1278,7 @@ export class BrowserManager extends DurableObject {
             .replace(/\\s+/g, " ")
             .trim();
 
-        const text =
+        const body =
           clean(
             document.body
               ?.innerText ||
@@ -1470,85 +1286,37 @@ export class BrowserManager extends DurableObject {
           );
 
         const lower =
-          text.toLowerCase();
+          body.toLowerCase();
 
-        const signals = [
-          "save",
-          "preview",
-          "desktop",
-          "mobile",
-          "section",
-          "sections",
-          "row",
-          "rows",
-          "column",
-          "columns",
-          "element",
-          "elements",
-          "undo",
-          "redo",
-          "settings"
-        ];
-
-        const foundSignals =
-          signals.filter(
-            signal =>
-              lower.includes(
-                signal
-              )
+        const signals =
+          [
+            "save",
+            "preview",
+            "desktop",
+            "mobile",
+            "section",
+            "row",
+            "column",
+            "element",
+            "undo",
+            "redo",
+            "settings"
+          ].filter(
+            word =>
+              lower.includes(word)
           );
-
-        const controls =
-          Array.from(
-            document.querySelectorAll(
-              'button, a, [role="button"], [role="link"], input, select, textarea'
-            )
-          )
-            .map(el => ({
-              tag:
-                el.tagName
-                  .toLowerCase(),
-
-              type:
-                el.getAttribute(
-                  "type"
-                ) || "",
-
-              text:
-                clean(
-                  el.innerText ||
-                  el.textContent ||
-                  el.getAttribute(
-                    "aria-label"
-                  ) ||
-                  el.getAttribute(
-                    "placeholder"
-                  )
-                )
-            }))
-            .filter(
-              item =>
-                item.text
-            )
-            .slice(
-              0,
-              300
-            );
 
         return {
           url:
-            window.location.href,
+            location.href,
 
           bodyPreview:
-            text.slice(
+            body.slice(
               0,
               6000
             ),
 
-          signals:
-            foundSignals,
-
-          controls
+          signals
         };
       });
 
@@ -1567,53 +1335,60 @@ export class BrowserManager extends DurableObject {
 
 
   async detectBuilder(page) {
-    const pageSnapshot =
-      await this.getPageSnapshot(
-        page
+    const snap =
+      await this.snapshot(page);
+
+    const lower =
+      snap.body.toLowerCase();
+
+    const urlLower =
+      snap.url.toLowerCase();
+
+    const urlSignals =
+      (
+        urlLower.includes(
+          "builder"
+        ) ||
+        urlLower.includes(
+          "editor"
+        ) ||
+        urlLower.includes(
+          "funnel-builder"
+        )
       );
-
-    const topLower =
-      pageSnapshot.body
-        .toLowerCase();
-
-    const builderTerms = [
-      "save",
-      "preview",
-      "desktop",
-      "mobile",
-      "sections",
-      "rows",
-      "columns",
-      "elements",
-      "undo",
-      "redo"
-    ];
 
     const topSignals =
-      builderTerms.filter(
-        term =>
-          topLower.includes(
-            term
-          )
+      [
+        "save",
+        "preview",
+        "desktop",
+        "mobile",
+        "undo",
+        "redo",
+        "sections",
+        "elements"
+      ].filter(
+        word =>
+          lower.includes(word)
       );
 
-    const frameResults = [];
+    const frames = [];
 
     for (
       const frame
       of page.frames()
     ) {
-      frameResults.push(
+      frames.push(
         await this.inspectFrame(
           frame
         )
       );
     }
 
-    const frameSignalCount =
-      frameResults.reduce(
-        (total, frame) =>
-          total +
+    const frameSignals =
+      frames.reduce(
+        (count, frame) =>
+          count +
           (
             Array.isArray(
               frame.signals
@@ -1624,50 +1399,30 @@ export class BrowserManager extends DurableObject {
         0
       );
 
-    /*
-     * Require Save plus other builder signals,
-     * OR enough signals across the frames.
-     */
-    const topHasSave =
-      topLower.includes(
-        "save"
-      );
-
     const isBuilder =
-      (
-        topHasSave &&
-        topSignals.length >= 2
-      ) ||
-      frameSignalCount >= 4;
+      urlSignals ||
+      topSignals.length >= 4 ||
+      frameSignals >= 5;
 
     return {
       isBuilder,
-
       title:
-        pageSnapshot.title,
-
+        snap.title,
       url:
-        pageSnapshot.url,
-
+        snap.url,
       topSignals,
-
-      frameSignalCount,
-
+      frameSignals,
       bodyPreview:
-        pageSnapshot.body.slice(
+        snap.body.slice(
           0,
           5000
         ),
-
-      frames:
-        frameResults
+      frames
     };
   }
 
 
-  async findBuilderPage(
-    browser
-  ) {
+  async findBuilderPage(browser) {
     const pages =
       await browser.pages();
 
@@ -1696,44 +1451,23 @@ export class BrowserManager extends DurableObject {
   }
 
 
-  /*
-   * ---------------------------------------------------
-   * OPEN PAGE BUILDER
-   * ---------------------------------------------------
-   */
-
-
   async openPageBuilder() {
     const browser =
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
     }
 
-    /*
-     * If the builder is already open,
-     * just confirm it.
-     */
-    const alreadyOpen =
+    const existing =
       await this.findBuilderPage(
         browser
       );
 
-    if (alreadyOpen) {
-      await this.storage.put(
-        "builderUrl",
-        alreadyOpen
-          .page
-          .url()
-      );
-
+    if (existing) {
       return json({
         status:
           "page-builder-open",
@@ -1745,131 +1479,138 @@ export class BrowserManager extends DurableObject {
           true,
 
         builder:
-          alreadyOpen.detection
+          existing.detection
       });
     }
 
-    const page =
+    let page =
       await this.chooseHighLevelPage(
         browser
       );
 
     if (!page) {
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+      return json({
+        status:
+          "no-highlevel-page"
+      }, 409);
     }
 
-    await this.waitForHighLevel(
-      page
+    const funnelName =
+      await this.storage.get(
+        "currentFunnelName"
+      );
+
+    const stepName =
+      await this.storage.get(
+        "currentStepName"
+      );
+
+    if (!funnelName) {
+      return json({
+        status:
+          "no-current-funnel",
+
+        message:
+          "Open a funnel first."
+      }, 409);
+    }
+
+    if (!stepName) {
+      return json({
+        status:
+          "no-current-step",
+
+        message:
+          "Select a funnel step first."
+      }, 409);
+    }
+
+    /*
+     * THIS IS THE FIX:
+     * restore the correct funnel and step overview
+     * before searching for Edit.
+     */
+    await this.ensureFunnelOpen(
+      page,
+      funnelName
     );
 
-    const beforePages =
+    await this.selectStepOverview(
+      page,
+      stepName
+    );
+
+    const before =
+      await this.snapshot(page);
+
+    const editPoint =
+      await this.findExactClickPoint(
+        page,
+        "Edit",
+        true
+      );
+
+    if (!editPoint) {
+      return json({
+        status:
+          "edit-control-not-found",
+
+        funnelName,
+        stepName,
+
+        message:
+          "The correct funnel and step overview were restored, but the exact Edit control could not be located.",
+
+        page: {
+          title:
+            before.title,
+          url:
+            before.url,
+          bodyPreview:
+            before.body.slice(
+              0,
+              5000
+            )
+        }
+      }, 404);
+    }
+
+    const pagesBefore =
       await browser.pages();
 
-    const beforeUrls =
-      beforePages.map(
+    const urlsBefore =
+      pagesBefore.map(
         p => p.url()
       );
 
-    const before =
-      await this.getPageSnapshot(
-        page
-      );
+    await this.realClick(
+      page,
+      editPoint
+    );
 
-    /*
-     * Exact "Edit" only.
-     * This deliberately will NOT match
-     * Edit page details or Edit in a New Tab.
-     */
-    const clickResult =
-      await this.clickExactText(
-        page,
-        "Edit"
-      );
-
-    if (!clickResult.clicked) {
-      return json(
-        {
-          status:
-            "edit-control-not-found",
-
-          message:
-            "The exact Edit control was not found on the current funnel step overview.",
-
-          page:
-            before
-        },
-        404
-      );
-    }
-
-    /*
-     * Wait for either:
-     * - a new tab
-     * - URL change
-     * - actual builder signals
-     */
-    let builderFound =
+    let builder =
       null;
 
-    const started =
+    const start =
       Date.now();
 
     while (
-      Date.now() -
-      started <
+      Date.now() - start <
       30000
     ) {
-      await sleep(
-        750
-      );
+      await sleep(750);
 
-      builderFound =
+      builder =
         await this.findBuilderPage(
           browser
         );
 
-      if (builderFound) {
+      if (builder) {
         break;
-      }
-
-      const pagesNow =
-        await browser.pages();
-
-      const changed =
-        pagesNow.some(
-          p =>
-            !beforeUrls.includes(
-              p.url()
-            )
-        );
-
-      if (changed) {
-        /*
-         * Give newly opened editor page
-         * time to render.
-         */
-        await sleep(
-          1500
-        );
-
-        builderFound =
-          await this.findBuilderPage(
-            browser
-          );
-
-        if (builderFound) {
-          break;
-        }
       }
     }
 
-    if (!builderFound) {
+    if (!builder) {
       const pages =
         await browser.pages();
 
@@ -1881,72 +1622,48 @@ export class BrowserManager extends DurableObject {
         i++
       ) {
         try {
-          const snapshot =
-            await this
-              .getPageSnapshot(
-                pages[i]
-              );
+          const snap =
+            await this.snapshot(
+              pages[i]
+            );
 
           diagnostics.push({
-            index:
-              i,
-
+            index: i,
+            newPage:
+              !urlsBefore.includes(
+                snap.url
+              ),
             title:
-              snapshot.title,
-
+              snap.title,
             url:
-              snapshot.url,
-
+              snap.url,
             bodyPreview:
-              snapshot.body.slice(
+              snap.body.slice(
                 0,
-                2500
+                3000
               )
           });
-
-        } catch (error) {
-          diagnostics.push({
-            index:
-              i,
-
-            url:
-              pages[i].url(),
-
-            error:
-              error instanceof Error
-                ? error.message
-                : String(error)
-          });
-        }
+        } catch {}
       }
 
-      return json(
-        {
-          status:
-            "page-builder-not-verified",
+      return json({
+        status:
+          "page-builder-not-verified",
 
-          message:
-            "The exact Edit control received a real browser click, but the HighLevel builder could not yet be verified. No false success has been reported.",
+        message:
+          "Edit was clicked from the verified step overview, but no builder could yet be verified.",
 
-          clickResult,
-
-          before,
-
-          pages:
-            diagnostics
-        },
-        409
-      );
+        funnelName,
+        stepName,
+        editPoint,
+        pages:
+          diagnostics
+      }, 409);
     }
-
-    const builderUrl =
-      builderFound
-        .page
-        .url();
 
     await this.storage.put(
       "builderUrl",
-      builderUrl
+      builder.page.url()
     );
 
     return json({
@@ -1956,19 +1673,13 @@ export class BrowserManager extends DurableObject {
       verified:
         true,
 
-      clickResult,
+      funnelName,
+      stepName,
 
       builder:
-        builderFound.detection
+        builder.detection
     });
   }
-
-
-  /*
-   * ---------------------------------------------------
-   * INSPECT PAGE BUILDER
-   * ---------------------------------------------------
-   */
 
 
   async inspectPageBuilder() {
@@ -1976,13 +1687,10 @@ export class BrowserManager extends DurableObject {
       await this.connectToBrowser();
 
     if (!browser) {
-      return json(
-        {
-          status:
-            "browser-unavailable"
-        },
-        409
-      );
+      return json({
+        status:
+          "browser-unavailable"
+      }, 409);
     }
 
     const found =
@@ -1991,67 +1699,49 @@ export class BrowserManager extends DurableObject {
       );
 
     if (!found) {
-      return json(
-        {
-          status:
-            "page-builder-not-open",
+      return json({
+        status:
+          "page-builder-not-open",
 
-          message:
-            "No verified HighLevel page builder is currently open."
-        },
-        409
-      );
+        message:
+          "No verified HighLevel page builder is currently open."
+      }, 409);
     }
 
     const page =
       found.page;
 
-    const topControls =
+    const controls =
       await page.evaluate(() => {
         const clean = value =>
           String(value || "")
             .replace(/\\s+/g, " ")
             .trim();
 
-        const visible =
-          element => {
-            const style =
-              window
-                .getComputedStyle(
-                  element
-                );
+        const visible = el => {
+          const style =
+            getComputedStyle(el);
 
-            const rect =
-              element
-                .getBoundingClientRect();
+          const rect =
+            el.getBoundingClientRect();
 
-            return (
-              style.display !==
-                "none" &&
-              style.visibility !==
-                "hidden" &&
-              rect.width > 0 &&
-              rect.height > 0
-            );
-          };
+          return (
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        };
 
         return Array.from(
           document.querySelectorAll(
             'button, a, [role="button"], [role="link"], input, textarea, select'
           )
         )
-          .filter(
-            visible
-          )
+          .filter(visible)
           .map(el => ({
             tag:
-              el.tagName
-                .toLowerCase(),
-
-            type:
-              el.getAttribute(
-                "type"
-              ) || "",
+              el.tagName.toLowerCase(),
 
             text:
               clean(
@@ -2070,15 +1760,11 @@ export class BrowserManager extends DurableObject {
                 ? el.href
                 : ""
           }))
-          .filter(
-            item =>
-              item.text ||
-              item.href
+          .filter(item =>
+            item.text ||
+            item.href
           )
-          .slice(
-            0,
-            400
-          );
+          .slice(0, 400);
       });
 
     const frames = [];
@@ -2098,10 +1784,10 @@ export class BrowserManager extends DurableObject {
       status:
         "page-builder-inspection-success",
 
-      readOnly:
+      verified:
         true,
 
-      verified:
+      readOnly:
         true,
 
       builder: {
@@ -2111,19 +1797,11 @@ export class BrowserManager extends DurableObject {
         url:
           page.url(),
 
-        topControls,
-
+        controls,
         frames
       }
     });
   }
-
-
-  /*
-   * ---------------------------------------------------
-   * STATUS
-   * ---------------------------------------------------
-   */
 
 
   async status() {
@@ -2137,15 +1815,12 @@ export class BrowserManager extends DurableObject {
 
     if (
       this.browser &&
-      this.browser
-        .isConnected()
+      this.browser.isConnected()
     ) {
       reachable =
         true;
 
-    } else if (
-      sessionId
-    ) {
+    } else if (sessionId) {
       try {
         this.browser =
           await puppeteer.connect(
@@ -2156,13 +1831,11 @@ export class BrowserManager extends DurableObject {
         reachable =
           Boolean(
             this.browser &&
-            this.browser
-              .isConnected()
+            this.browser.isConnected()
           );
 
       } catch {
-        reachable =
-          false;
+        reachable = false;
       }
     }
 
@@ -2181,12 +1854,10 @@ export class BrowserManager extends DurableObject {
     }
 
     return json({
-      status:
-        "ok",
+      status: "ok",
 
       sessionId:
-        sessionId ||
-        null,
+        sessionId || null,
 
       browserReachable:
         reachable,
@@ -2194,38 +1865,31 @@ export class BrowserManager extends DurableObject {
       currentFunnel:
         await this.storage.get(
           "currentFunnelName"
-        ) ||
-        null,
+        ) || null,
+
+      currentStep:
+        await this.storage.get(
+          "currentStepName"
+        ) || null,
 
       currentFunnelUrl:
         await this.storage.get(
           "currentFunnelUrl"
-        ) ||
-        null,
+        ) || null,
 
       builderUrl:
         await this.storage.get(
           "builderUrl"
-        ) ||
-        null,
+        ) || null,
 
       builderOpen
     });
   }
 
 
-  /*
-   * ---------------------------------------------------
-   * ROUTER
-   * ---------------------------------------------------
-   */
-
-
   async fetch(request) {
     const url =
-      new URL(
-        request.url
-      );
+      new URL(request.url);
 
     try {
       switch (
@@ -2233,72 +1897,50 @@ export class BrowserManager extends DurableObject {
       ) {
 
         case "/api/login/start":
-          return await this
-            .startLoginBrowser();
-
+          return await this.startLoginBrowser();
 
         case "/api/status":
-          return await this
-            .status();
-
+          return await this.status();
 
         case "/api/sites/inspect":
-          return await this
-            .inspectFunnels();
-
+          return await this.inspectFunnels();
 
         case "/api/funnel/open":
-          return await this
-            .openFunnel(
-              request
-            );
-
+          return await this.openFunnel(
+            request
+          );
 
         case "/api/funnel/steps":
-          return await this
-            .listFunnelSteps();
-
+          return await this.listFunnelSteps();
 
         case "/api/funnel/step/inspect":
-          return await this
-            .inspectFunnelStep(
-              request
-            );
-
+          return await this.inspectFunnelStep(
+            request
+          );
 
         case "/api/builder/open":
-          return await this
-            .openPageBuilder();
-
+          return await this.openPageBuilder();
 
         case "/api/builder/inspect":
-          return await this
-            .inspectPageBuilder();
-
+          return await this.inspectPageBuilder();
 
         default:
-          return json(
-            {
-              error:
-                "Unknown action"
-            },
-            404
-          );
+          return json({
+            error:
+              "Unknown action"
+          }, 404);
       }
 
     } catch (error) {
-      return json(
-        {
-          status:
-            "error",
+      return json({
+        status:
+          "error",
 
-          message:
-            error instanceof Error
-              ? error.message
-              : String(error)
-        },
-        500
-      );
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      }, 500);
     }
   }
 }
