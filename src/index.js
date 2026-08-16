@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import * as puppeteer from "@cloudflare/puppeteer";
 
 const LOCATION_ID = "zyhFEkFNE1Eo2O7I8nOP";
+const GHL_BASE = "https://app.gohighlevel.com";
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -10,6 +11,10 @@ function json(data, status = 200) {
       "content-type": "application/json; charset=utf-8"
     }
   });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function controlPage() {
@@ -22,7 +27,7 @@ function controlPage() {
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 820px;
+      max-width: 900px;
       margin: 40px auto;
       padding: 0 20px;
     }
@@ -30,11 +35,11 @@ function controlPage() {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
-      margin: 10px 0 20px;
+      margin: 8px 0 15px;
     }
     button {
-      padding: 12px 16px;
-      margin: 5px;
+      padding: 11px 15px;
+      margin: 4px;
       cursor: pointer;
     }
     pre {
@@ -43,6 +48,11 @@ function controlPage() {
       white-space: pre-wrap;
       word-break: break-word;
     }
+    section {
+      margin: 25px 0;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #ddd;
+    }
   </style>
 </head>
 
@@ -50,44 +60,73 @@ function controlPage() {
 
 <h1>CGA HighLevel Browser</h1>
 
-<p>
-Connects directly to the current authenticated Cloudflare Browser Run session.
-</p>
-
 <label><strong>Browser Admin Key</strong></label>
+<input id="key" type="password" placeholder="Enter BROWSER_ADMIN_KEY">
 
-<input
-  id="key"
-  type="password"
-  placeholder="Enter BROWSER_ADMIN_KEY"
-/>
+<section>
+  <h3>Browser</h3>
 
-<h3>Browser</h3>
+  <button onclick="run('/api/login/start')">
+    Start Login Browser
+  </button>
 
-<button onclick="run('/api/login/start')">
-Start Login Browser
-</button>
+  <button onclick="run('/api/status')">
+    Check Status
+  </button>
+</section>
 
-<button onclick="run('/api/status')">
-Check Status
-</button>
+<section>
+  <h3>Funnels</h3>
 
-<h3>HighLevel</h3>
+  <button onclick="run('/api/sites/inspect')">
+    List Funnels
+  </button>
 
-<button onclick="run('/api/inspect-current')">
-Inspect Current HighLevel Page
-</button>
+  <input
+    id="funnelName"
+    placeholder="Funnel name e.g. GCB Online Coaching Landing Page- Black"
+  >
 
-<button onclick="run('/api/sites/inspect')">
-Inspect Funnels Page
-</button>
+  <button onclick="runWithBody('/api/funnel/open', {
+    name: document.getElementById('funnelName').value
+  })">
+    Open Funnel
+  </button>
+
+  <button onclick="run('/api/funnel/steps')">
+    List Current Funnel Steps
+  </button>
+</section>
+
+<section>
+  <h3>Step / Page</h3>
+
+  <input
+    id="stepName"
+    placeholder="Step/page name"
+  >
+
+  <button onclick="runWithBody('/api/funnel/step/inspect', {
+    name: document.getElementById('stepName').value
+  })">
+    Inspect Step
+  </button>
+</section>
 
 <pre id="result">Ready</pre>
 
 <script>
+function adminKey() {
+  return document.getElementById("key").value;
+}
+
 async function run(path) {
-  const key = document.getElementById("key").value;
+  return runWithBody(path, {});
+}
+
+async function runWithBody(path, body) {
   const result = document.getElementById("result");
+  const key = adminKey();
 
   if (!key) {
     result.textContent = "Enter your Browser Admin Key first.";
@@ -100,14 +139,14 @@ async function run(path) {
     const response = await fetch(path, {
       method: "POST",
       headers: {
-        "x-admin-key": key
-      }
+        "x-admin-key": key,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body || {})
     });
 
     const data = await response.json();
-
-    result.textContent =
-      JSON.stringify(data, null, 2);
+    result.textContent = JSON.stringify(data, null, 2);
 
   } catch (error) {
     result.textContent = String(error);
@@ -142,8 +181,7 @@ export default {
       }, 503);
     }
 
-    const suppliedKey =
-      request.headers.get("x-admin-key");
+    const suppliedKey = request.headers.get("x-admin-key");
 
     if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
       return json({ error: "Unauthorized" }, 401);
@@ -169,6 +207,15 @@ export class BrowserManager extends DurableObject {
     this.storage = state.storage;
     this.env = env;
     this.browser = null;
+  }
+
+
+  async body(request) {
+    try {
+      return await request.json();
+    } catch {
+      return {};
+    }
   }
 
 
@@ -198,7 +245,7 @@ export class BrowserManager extends DurableObject {
       await this.browser.newPage();
 
     await page.goto(
-      "https://app.gohighlevel.com/",
+      `${GHL_BASE}/`,
       {
         waitUntil: "domcontentloaded",
         timeout: 30000
@@ -216,9 +263,7 @@ export class BrowserManager extends DurableObject {
     return json({
       status: "login-browser-ready",
       sessionId,
-      pageUrl: page.url(),
-      message:
-        "Open this exact session in Cloudflare Browser Run Live Sessions and log into HighLevel."
+      pageUrl: page.url()
     });
   }
 
@@ -248,175 +293,157 @@ export class BrowserManager extends DurableObject {
         );
 
       return this.browser;
+
     } catch {
       return null;
     }
   }
 
 
-  async getHighLevelPages(browser) {
-    const pages =
-      await browser.pages();
+  async highLevelPages(browser) {
+    const pages = await browser.pages();
 
-    const results = [];
-
-    for (let index = 0; index < pages.length; index++) {
-      const page = pages[index];
-      const url = page.url();
-
-      if (
-        url.includes(
+    return pages.filter(
+      page =>
+        page.url().includes(
           "app.gohighlevel.com"
         )
-      ) {
-        results.push({
-          index,
-          page,
-          url
-        });
-      }
-    }
-
-    return results;
+    );
   }
 
 
-  async chooseCurrentHighLevelPage(browser) {
-    const highLevelPages =
-      await this.getHighLevelPages(browser);
+  async chooseHighLevelPage(browser) {
+    const pages =
+      await this.highLevelPages(browser);
 
-    if (!highLevelPages.length) {
+    if (!pages.length) {
       return null;
     }
 
-    /*
-     * Prefer the Funnels/Sites page if it is already open.
-     */
-    const funnelsPage =
-      highLevelPages.find(({ url }) =>
-        url.includes(
-          "/funnels-websites/"
-        )
-      );
+    const funnelDetail =
+      pages.find(page => {
+        const url = page.url();
 
-    if (funnelsPage) {
-      return funnelsPage.page;
+        return (
+          url.includes("/funnels-websites/funnel") &&
+          !url.endsWith("/funnels")
+        );
+      });
+
+    if (funnelDetail) {
+      return funnelDetail;
     }
 
-    /*
-     * Prefer a location page next.
-     */
-    const locationPage =
-      highLevelPages.find(({ url }) =>
-        url.includes(
-          "/v2/location/"
-        )
+    const funnels =
+      pages.find(
+        page =>
+          page.url().includes(
+            "/funnels-websites/funnels"
+          )
       );
 
-    if (locationPage) {
-      return locationPage.page;
+    if (funnels) {
+      return funnels;
     }
 
-    /*
-     * Otherwise just use the last HighLevel page.
-     */
-    return highLevelPages[
-      highLevelPages.length - 1
-    ].page;
+    const location =
+      pages.find(
+        page =>
+          page.url().includes(
+            "/v2/location/"
+          )
+      );
+
+    return location || pages[pages.length - 1];
   }
 
 
-  async inspectCurrentPage() {
-    const browser =
-      await this.connectToBrowser();
-
-    if (!browser) {
-      return json({
-        status: "browser-unavailable",
-        message:
-          "The stored Browser Run session cannot currently be reached."
-      }, 409);
-    }
-
-    const page =
-      await this.chooseCurrentHighLevelPage(
-        browser
-      );
-
-    if (!page) {
-      return json({
-        status: "no-highlevel-page",
-        message:
-          "No HighLevel tab is currently open in the Browser Run session."
-      }, 409);
-    }
-
+  async waitForHighLevel(page, timeout = 30000) {
     await page.waitForSelector(
       "body",
       { timeout: 15000 }
     );
 
-    await new Promise(
-      resolve =>
-        setTimeout(resolve, 1500)
-    );
+    try {
+      await page.waitForFunction(
+        () => {
+          const text =
+            (document.body?.innerText || "")
+              .replace(/\\s+/g, " ")
+              .trim()
+              .toLowerCase();
 
-    const inspection =
-      await page.evaluate(() => {
-
-        const clean = value =>
-          String(value || "")
-            .replace(/\\s+/g, " ")
-            .trim();
-
-        const bodyText =
-          clean(
-            document.body?.innerText || ""
-          );
-
-        const links =
-          Array.from(
-            document.querySelectorAll(
-              "a[href]"
+          return (
+            text.length > 30 &&
+            !text.includes(
+              "loading fresh data"
             )
-          )
-          .map(link => ({
-            text:
-              clean(
-                link.innerText ||
-                link.textContent
-              ),
-            href:
-              link.href
-          }))
-          .filter(link =>
-            link.text ||
-            link.href
           );
+        },
+        {
+          timeout,
+          polling: 500
+        }
+      );
+    } catch {}
 
-        return {
-          title:
-            document.title,
+    await sleep(1200);
+  }
 
-          url:
-            window.location.href,
 
-          bodyPreview:
-            bodyText.slice(0, 5000),
+  async clickText(page, targetText) {
+    return page.evaluate(target => {
+      const clean = value =>
+        String(value || "")
+          .replace(/\\s+/g, " ")
+          .trim();
 
-          links:
-            links.slice(0, 250)
-        };
+      const wanted =
+        clean(target).toLowerCase();
+
+      const candidates =
+        Array.from(
+          document.querySelectorAll(
+            'a, button, tr, [role="row"], [role="button"], [role="link"], [class*="card"]'
+          )
+        );
+
+      const exact =
+        candidates.find(el =>
+          clean(
+            el.innerText ||
+            el.textContent
+          ).toLowerCase() === wanted
+        );
+
+      const contains =
+        candidates.find(el =>
+          clean(
+            el.innerText ||
+            el.textContent
+          ).toLowerCase().includes(wanted)
+        );
+
+      const element =
+        exact || contains;
+
+      if (!element) {
+        return false;
+      }
+
+      const clickable =
+        element.closest(
+          'a, button, [role="button"], [role="link"], tr, [role="row"]'
+        ) || element;
+
+      clickable.scrollIntoView({
+        block: "center"
       });
 
-    return json({
-      status: "current-page-inspection-success",
-      sessionId:
-        await this.storage.get(
-          "loginSessionId"
-        ),
-      highLevel: inspection
-    });
+      clickable.click();
+
+      return true;
+    }, targetText);
   }
 
 
@@ -426,34 +453,24 @@ export class BrowserManager extends DurableObject {
 
     if (!browser) {
       return json({
-        status: "browser-unavailable",
-        message:
-          "The stored Browser Run session cannot currently be reached."
+        status: "browser-unavailable"
       }, 409);
     }
 
     let page =
-      await this.chooseCurrentHighLevelPage(
+      await this.chooseHighLevelPage(
         browser
       );
 
     if (!page) {
       return json({
-        status: "no-highlevel-page",
-        message:
-          "No HighLevel tab is currently open."
+        status: "no-highlevel-page"
       }, 409);
     }
 
     const funnelsUrl =
-      "https://app.gohighlevel.com/v2/location/" +
-      LOCATION_ID +
-      "/funnels-websites/funnels";
+      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
 
-    /*
-     * If not already on the funnels page,
-     * navigate there directly.
-     */
     if (
       !page.url().includes(
         "/funnels-websites/funnels"
@@ -468,92 +485,14 @@ export class BrowserManager extends DurableObject {
       );
     }
 
-    /*
-     * Wait for the SPA to finish replacing
-     * its loading state.
-     */
-    try {
-      await page.waitForFunction(
-        () => {
-          const text =
-            (document.body?.innerText || "")
-              .replace(/\\s+/g, " ")
-              .trim()
-              .toLowerCase();
+    await this.waitForHighLevel(page);
 
-          return (
-            !text.includes(
-              "loading fresh data"
-            ) &&
-            text.length > 50
-          );
-        },
-        {
-          timeout: 30000,
-          polling: 500
-        }
-      );
-    } catch {
-      // Continue with whatever is rendered.
-    }
-
-    await new Promise(
-      resolve =>
-        setTimeout(resolve, 1500)
-    );
-
-    const result =
+    const data =
       await page.evaluate(() => {
-
         const clean = value =>
           String(value || "")
             .replace(/\\s+/g, " ")
             .trim();
-
-        const bodyText =
-          clean(
-            document.body?.innerText || ""
-          );
-
-        const links =
-          Array.from(
-            document.querySelectorAll(
-              "a[href]"
-            )
-          )
-          .map(link => ({
-            text:
-              clean(
-                link.innerText ||
-                link.textContent
-              ),
-            href:
-              link.href
-          }))
-          .filter(link =>
-            link.text ||
-            link.href
-          );
-
-        const buttons =
-          Array.from(
-            document.querySelectorAll(
-              'button, [role="button"]'
-            )
-          )
-          .map(button => ({
-            text:
-              clean(
-                button.innerText ||
-                button.textContent ||
-                button.getAttribute(
-                  "aria-label"
-                )
-              )
-          }))
-          .filter(button =>
-            button.text
-          );
 
         const rows =
           Array.from(
@@ -561,91 +500,369 @@ export class BrowserManager extends DurableObject {
               'tr, [role="row"], [class*="card"]'
             )
           )
-          .map(row => ({
-            text:
-              clean(
-                row.innerText ||
-                row.textContent
-              )
-          }))
-          .filter(row =>
-            row.text
+          .map(row =>
+            clean(
+              row.innerText ||
+              row.textContent
+            )
+          )
+          .filter(Boolean);
+
+        const body =
+          clean(
+            document.body?.innerText || ""
           );
 
-        const likelyFunnels =
-          [
-            ...links.map(item => ({
-              type: "link",
-              ...item
-            })),
-
-            ...rows.map(item => ({
-              type: "row",
-              ...item
-            }))
-          ]
-          .filter(item => {
-            const text =
-              (
-                item.text +
-                " " +
-                (item.href || "")
-              ).toLowerCase();
-
-            return (
-              text.includes("funnel") ||
-              text.includes("website") ||
-              text.includes("golf") ||
-              text.includes("coaching") ||
-              text.includes("cheshire") ||
-              text.includes("jo.")
-            );
-          });
-
         return {
-          title:
-            document.title,
-
-          url:
-            window.location.href,
-
+          title: document.title,
+          url: location.href,
           bodyPreview:
-            bodyText.slice(0, 10000),
-
-          likelyFunnels:
-            likelyFunnels.slice(
-              0,
-              200
-            ),
-
-          links:
-            links.slice(
-              0,
-              300
-            ),
-
-          buttons:
-            buttons.slice(
-              0,
-              200
-            ),
-
-          rows:
-            rows.slice(
-              0,
-              200
-            )
+            body.slice(0, 8000),
+          rows
         };
       });
 
     return json({
-      status: "funnels-inspection-success",
+      status:
+        "funnels-inspection-success",
       readOnly: true,
-      sessionId:
+      funnels: data
+    });
+  }
+
+
+  async openFunnel(request) {
+    const args =
+      await this.body(request);
+
+    const name =
+      String(args.name || "").trim();
+
+    if (!name) {
+      return json({
+        status: "error",
+        message: "Funnel name is required."
+      }, 400);
+    }
+
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status: "browser-unavailable"
+      }, 409);
+    }
+
+    let page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
+    }
+
+    const funnelsUrl =
+      `${GHL_BASE}/v2/location/${LOCATION_ID}/funnels-websites/funnels`;
+
+    if (
+      !page.url().includes(
+        "/funnels-websites/funnels"
+      )
+    ) {
+      await page.goto(
+        funnelsUrl,
+        {
+          waitUntil: "domcontentloaded",
+          timeout: 30000
+        }
+      );
+    }
+
+    await this.waitForHighLevel(page);
+
+    const beforeUrl =
+      page.url();
+
+    const clicked =
+      await this.clickText(
+        page,
+        name
+      );
+
+    if (!clicked) {
+      return json({
+        status: "funnel-not-found",
+        funnelName: name
+      }, 404);
+    }
+
+    try {
+      await page.waitForFunction(
+        previous =>
+          location.href !== previous ||
+          (document.body?.innerText || "")
+            .toLowerCase()
+            .includes("funnel steps"),
+        {
+          timeout: 15000,
+          polling: 300
+        },
+        beforeUrl
+      );
+    } catch {}
+
+    await sleep(1800);
+
+    const result =
+      await page.evaluate(() => ({
+        title: document.title,
+        url: location.href,
+        body:
+          (document.body?.innerText || "")
+            .slice(0, 8000)
+      }));
+
+    await this.storage.put(
+      "currentFunnelName",
+      name
+    );
+
+    return json({
+      status: "funnel-opened",
+      funnelName: name,
+      page: result
+    });
+  }
+
+
+  async listFunnelSteps() {
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status: "browser-unavailable"
+      }, 409);
+    }
+
+    const page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
+    }
+
+    await this.waitForHighLevel(page);
+
+    const result =
+      await page.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
+
+        const candidates =
+          Array.from(
+            document.querySelectorAll(
+              'a, button, tr, [role="row"], [role="button"], [role="link"], [class*="card"]'
+            )
+          )
+          .map(el => ({
+            tag:
+              el.tagName.toLowerCase(),
+
+            text:
+              clean(
+                el.innerText ||
+                el.textContent
+              ),
+
+            href:
+              el.tagName === "A"
+                ? el.href
+                : ""
+          }))
+          .filter(
+            item =>
+              item.text ||
+              item.href
+          );
+
+        const useful =
+          candidates.filter(item => {
+            const haystack =
+              (
+                item.text +
+                " " +
+                item.href
+              ).toLowerCase();
+
+            return (
+              haystack.includes("step") ||
+              haystack.includes("page") ||
+              haystack.includes("edit") ||
+              haystack.includes("preview") ||
+              haystack.includes("publish") ||
+              haystack.includes("settings")
+            );
+          });
+
+        return {
+          title: document.title,
+          url: location.href,
+          bodyPreview:
+            clean(
+              document.body?.innerText || ""
+            ).slice(0, 10000),
+          candidates:
+            useful.slice(0, 200)
+        };
+      });
+
+    return json({
+      status:
+        "funnel-steps-inspection-success",
+
+      currentFunnel:
         await this.storage.get(
-          "loginSessionId"
+          "currentFunnelName"
         ),
-      funnels: result
+
+      readOnly: true,
+      result
+    });
+  }
+
+
+  async inspectFunnelStep(request) {
+    const args =
+      await this.body(request);
+
+    const name =
+      String(args.name || "").trim();
+
+    if (!name) {
+      return json({
+        status: "error",
+        message: "Step/page name is required."
+      }, 400);
+    }
+
+    const browser =
+      await this.connectToBrowser();
+
+    if (!browser) {
+      return json({
+        status: "browser-unavailable"
+      }, 409);
+    }
+
+    const page =
+      await this.chooseHighLevelPage(
+        browser
+      );
+
+    if (!page) {
+      return json({
+        status: "no-highlevel-page"
+      }, 409);
+    }
+
+    await this.waitForHighLevel(page);
+
+    const beforeUrl =
+      page.url();
+
+    const clicked =
+      await this.clickText(
+        page,
+        name
+      );
+
+    if (!clicked) {
+      return json({
+        status: "step-not-found",
+        stepName: name
+      }, 404);
+    }
+
+    try {
+      await page.waitForFunction(
+        previous =>
+          location.href !== previous,
+        {
+          timeout: 15000,
+          polling: 300
+        },
+        beforeUrl
+      );
+    } catch {}
+
+    await sleep(1800);
+
+    const result =
+      await page.evaluate(() => {
+        const clean = value =>
+          String(value || "")
+            .replace(/\\s+/g, " ")
+            .trim();
+
+        const text =
+          clean(
+            document.body?.innerText || ""
+          );
+
+        const controls =
+          Array.from(
+            document.querySelectorAll(
+              'a, button, [role="button"], [role="link"]'
+            )
+          )
+          .map(el => ({
+            text:
+              clean(
+                el.innerText ||
+                el.textContent ||
+                el.getAttribute(
+                  "aria-label"
+                )
+              ),
+
+            href:
+              el.tagName === "A"
+                ? el.href
+                : ""
+          }))
+          .filter(
+            item =>
+              item.text ||
+              item.href
+          );
+
+        return {
+          title: document.title,
+          url: location.href,
+          bodyPreview:
+            text.slice(0, 12000),
+          controls:
+            controls.slice(0, 250)
+        };
+      });
+
+    return json({
+      status:
+        "funnel-step-inspection-success",
+      stepName: name,
+      readOnly: true,
+      result
     });
   }
 
@@ -663,6 +880,7 @@ export class BrowserManager extends DurableObject {
       this.browser.isConnected()
     ) {
       reachable = true;
+
     } else if (sessionId) {
       try {
         this.browser =
@@ -676,6 +894,7 @@ export class BrowserManager extends DurableObject {
             this.browser &&
             this.browser.isConnected()
           );
+
       } catch {
         reachable = false;
       }
@@ -704,11 +923,21 @@ export class BrowserManager extends DurableObject {
         case "/api/status":
           return await this.status();
 
-        case "/api/inspect-current":
-          return await this.inspectCurrentPage();
-
         case "/api/sites/inspect":
           return await this.inspectFunnels();
+
+        case "/api/funnel/open":
+          return await this.openFunnel(
+            request
+          );
+
+        case "/api/funnel/steps":
+          return await this.listFunnelSteps();
+
+        case "/api/funnel/step/inspect":
+          return await this.inspectFunnelStep(
+            request
+          );
 
         default:
           return json({
