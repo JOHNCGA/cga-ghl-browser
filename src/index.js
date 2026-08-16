@@ -553,9 +553,42 @@ export class BrowserManager extends DurableObject {
       }
     );
 
+    try {
+      await page.waitForFunction(
+        () => {
+          const text =
+            (document.body?.innerText || "")
+              .replace(/\\s+/g, " ")
+              .trim()
+              .toLowerCase();
+
+          const stillLoading =
+            text.includes(
+              "loading fresh data"
+            );
+
+          const usefulElements =
+            document.querySelectorAll(
+              'a[href], button, tr, [role="row"], [class*="card"]'
+            ).length;
+
+          return (
+            !stillLoading &&
+            usefulElements > 5
+          );
+        },
+        {
+          timeout: 30000,
+          polling: 500
+        }
+      );
+    } catch {
+      // Continue and inspect whatever HighLevel rendered.
+    }
+
     await new Promise(
       resolve =>
-        setTimeout(resolve, 4000)
+        setTimeout(resolve, 1500)
     );
 
     const result =
@@ -574,7 +607,7 @@ export class BrowserManager extends DurableObject {
         const items =
           Array.from(
             document.querySelectorAll(
-              'a, button, [role="button"], [role="link"], tr, [class*="card"]'
+              'a, button, [role="button"], [role="link"], tr, [role="row"], [class*="card"]'
             )
           )
           .map(element => ({
@@ -620,6 +653,27 @@ export class BrowserManager extends DurableObject {
 
           });
 
+        const allLinks =
+          Array.from(
+            document.querySelectorAll(
+              "a[href]"
+            )
+          )
+          .map(link => ({
+            text:
+              clean(
+                link.innerText ||
+                link.textContent
+              ),
+
+            href:
+              link.href
+          }))
+          .filter(link =>
+            link.text ||
+            link.href
+          );
+
         return {
 
           title:
@@ -629,35 +683,19 @@ export class BrowserManager extends DurableObject {
             window.location.href,
 
           bodyPreview:
-            bodyText.slice(0, 5000),
+            bodyText.slice(0, 8000),
 
           likelyFunnels:
             likelyFunnels.slice(
               0,
-              150
+              200
             ),
 
           allLinks:
-            Array.from(
-              document.querySelectorAll(
-                "a[href]"
-              )
+            allLinks.slice(
+              0,
+              300
             )
-            .map(link => ({
-              text:
-                clean(
-                  link.innerText ||
-                  link.textContent
-                ),
-
-              href:
-                link.href
-            }))
-            .filter(link =>
-              link.text ||
-              link.href
-            )
-            .slice(0, 250)
 
         };
       });
