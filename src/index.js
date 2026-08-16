@@ -1,9 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import * as puppeteer from "@cloudflare/puppeteer";
 
-const GHL_URL = "https://app.gohighlevel.com/";
-const KEEP_ALIVE = 600000;
-
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -23,24 +20,21 @@ function controlPage() {
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 720px;
+      max-width: 760px;
       margin: 40px auto;
       padding: 0 20px;
     }
-
     input {
       width: 100%;
       padding: 10px;
       box-sizing: border-box;
       margin: 10px 0 20px;
     }
-
     button {
       padding: 12px 16px;
       margin: 5px;
       cursor: pointer;
     }
-
     pre {
       background: #f4f4f4;
       padding: 15px;
@@ -49,18 +43,16 @@ function controlPage() {
     }
   </style>
 </head>
-
 <body>
 
 <h1>CGA HighLevel Browser</h1>
 
 <p>
-This controls the authenticated HighLevel browser.
+This version uses the currently authenticated Cloudflare Browser Run
+session directly. It does not attempt to rebuild your HighLevel login.
 </p>
 
-<label>
-<strong>Browser Admin Key</strong>
-</label>
+<label><strong>Browser Admin Key</strong></label>
 
 <input
   id="key"
@@ -68,75 +60,48 @@ This controls the authenticated HighLevel browser.
   placeholder="Enter BROWSER_ADMIN_KEY"
 />
 
-<h3>Step 1</h3>
+<h3>Browser</h3>
 
 <button onclick="run('/api/login/start')">
 Start Login Browser
 </button>
 
-<p>
-Then open Cloudflare Browser Run → Live Sessions
-and log into HighLevel.
-</p>
-
-<h3>Step 2</h3>
-
-<button onclick="run('/api/auth/save')">
-Save Authentication
-</button>
-
-<h3>Step 3</h3>
-
-<button onclick="run('/api/inspect')">
-Test Authentication
-</button>
-
-<h3>Status</h3>
-
 <button onclick="run('/api/status')">
 Check Status
+</button>
+
+<h3>HighLevel</h3>
+
+<button onclick="run('/api/inspect-current')">
+Inspect Logged-In HighLevel
 </button>
 
 <pre id="result">Ready</pre>
 
 <script>
 async function run(path) {
-
-  const key =
-    document.getElementById("key").value;
-
-  const result =
-    document.getElementById("result");
+  const key = document.getElementById("key").value;
+  const result = document.getElementById("result");
 
   if (!key) {
-    result.textContent =
-      "Enter your Browser Admin Key first.";
+    result.textContent = "Enter your Browser Admin Key first.";
     return;
   }
 
   result.textContent = "Working...";
 
   try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "x-admin-key": key
+      }
+    });
 
-    const response =
-      await fetch(path, {
-        method: "POST",
-        headers: {
-          "x-admin-key": key
-        }
-      });
-
-    const data =
-      await response.json();
-
-    result.textContent =
-      JSON.stringify(data, null, 2);
-
+    const data = await response.json();
+    result.textContent = JSON.stringify(data, null, 2);
   } catch (error) {
-
-    result.textContent =
-      String(error);
-
+    result.textContent = String(error);
   }
 }
 </script>
@@ -151,122 +116,76 @@ async function run(path) {
 }
 
 export default {
-
   async fetch(request, env) {
-
-    const url =
-      new URL(request.url);
+    const url = new URL(request.url);
 
     if (url.pathname === "/") {
       return controlPage();
     }
 
-    if (
-      !url.pathname.startsWith("/api/")
-    ) {
-      return json(
-        { error: "Not found" },
-        404
-      );
+    if (!url.pathname.startsWith("/api/")) {
+      return json({ error: "Not found" }, 404);
     }
 
     if (!env.BROWSER_ADMIN_KEY) {
-      return json(
-        {
-          error:
-            "BROWSER_ADMIN_KEY is not configured"
-        },
-        503
-      );
+      return json({
+        error: "BROWSER_ADMIN_KEY is not configured."
+      }, 503);
     }
 
-    const suppliedKey =
-      request.headers.get(
-        "x-admin-key"
-      );
+    const suppliedKey = request.headers.get("x-admin-key");
 
-    if (
-      suppliedKey !==
-      env.BROWSER_ADMIN_KEY
-    ) {
-      return json(
-        { error: "Unauthorized" },
-        401
-      );
+    if (suppliedKey !== env.BROWSER_ADMIN_KEY) {
+      return json({ error: "Unauthorized" }, 401);
     }
 
-    const object =
-      env.BROWSER_MANAGER.getByName(
-        "cga-ghl"
-      );
+    if (request.method !== "POST") {
+      return json({ error: "Method not allowed" }, 405);
+    }
 
+    const object = env.BROWSER_MANAGER.getByName("cga-ghl");
     return object.fetch(request);
   }
-
 };
 
 
 export class BrowserManager extends DurableObject {
-
   constructor(state, env) {
-
     super(state, env);
 
-    this.storage =
-      state.storage;
-
-    this.env =
-      env;
-
-    this.browser =
-      null;
+    this.storage = state.storage;
+    this.env = env;
+    this.browser = null;
   }
 
 
-  async launchBrowser() {
-
-    return await puppeteer.launch(
-      this.env.BROWSER,
-      {
-        keep_alive: KEEP_ALIVE
-      }
-    );
-
-  }
-
-
-  async startLogin() {
-
-    if (
-      this.browser &&
-      this.browser.isConnected()
-    ) {
-
+  async startLoginBrowser() {
+    /*
+     * If a previously managed browser is genuinely still connected,
+     * close it before deliberately creating a new login browser.
+     */
+    if (this.browser && this.browser.isConnected()) {
       try {
         await this.browser.close();
       } catch {}
-
     }
 
-    this.browser =
-      await this.launchBrowser();
+    this.browser = await puppeteer.launch(this.env.BROWSER, {
+      keep_alive: 600000
+    });
+
+    const pages = await this.browser.pages();
 
     const page =
+      pages[0] ||
       await this.browser.newPage();
 
-    await page.goto(
-      GHL_URL,
-      {
-        waitUntil:
-          "domcontentloaded",
+    await page.goto("https://app.gohighlevel.com/", {
+      waitUntil: "domcontentloaded",
+      timeout: 30000
+    });
 
-        timeout:
-          30000
-      }
-    );
-
-    const sessionId =
-      this.browser.sessionId();
+    const sessionId = this.browser.sessionId();
 
     await this.storage.put(
       "loginSessionId",
@@ -274,594 +193,301 @@ export class BrowserManager extends DurableObject {
     );
 
     return json({
-      status:
-        "login-browser-ready",
-
+      status: "login-browser-ready",
       sessionId,
-
-      pageUrl:
-        page.url(),
-
+      pageUrl: page.url(),
       message:
-        "Open this session in Cloudflare Browser Run Live Sessions and log into HighLevel."
+        "Open this exact session in Cloudflare Browser Run Live Sessions and log into HighLevel."
     });
-
   }
 
 
-  async reconnectLoginBrowser() {
-
-    if (
-      this.browser &&
-      this.browser.isConnected()
-    ) {
+  async connectToLoginBrowser() {
+    /*
+     * First use the live in-memory browser if the Durable Object
+     * still owns it.
+     */
+    if (this.browser && this.browser.isConnected()) {
       return this.browser;
     }
 
+    /*
+     * Otherwise reconnect using the exact Browser Run session ID
+     * stored when Start Login Browser was pressed.
+     */
     const sessionId =
-      await this.storage.get(
-        "loginSessionId"
-      );
+      await this.storage.get("loginSessionId");
 
     if (!sessionId) {
       return null;
     }
 
     try {
-
-      this.browser =
-        await puppeteer.connect(
-          this.env.BROWSER,
-          sessionId
-        );
+      this.browser = await puppeteer.connect(
+        this.env.BROWSER,
+        sessionId
+      );
 
       return this.browser;
-
-    } catch {
-
+    } catch (error) {
       return null;
-
     }
-
   }
 
 
-  async findHighLevelPage(browser) {
-
-    const pages =
-      await browser.pages();
-
-    // Prefer a HighLevel page that visibly looks authenticated.
-    for (const page of pages) {
-
-      if (
-        !page.url().includes(
-          "app.gohighlevel.com"
-        )
-      ) {
-        continue;
-      }
-
-      try {
-
-        const looksAuthenticated =
-          await page.evaluate(() => {
-
-            const text =
-              (document.body?.innerText || "")
-                .toLowerCase();
-
-            const hasDashboard =
-              text.includes("dashboard") ||
-              text.includes("opportunities") ||
-              text.includes("conversations") ||
-              text.includes("contacts");
-
-            const hasPassword =
-              Boolean(
-                document.querySelector(
-                  'input[type="password"]'
-                )
-              );
-
-            return (
-              hasDashboard &&
-              !hasPassword
-            );
-
-          });
-
-        if (looksAuthenticated) {
-          return page;
-        }
-
-      } catch {}
-
-    }
-
-    // Otherwise prefer a location URL.
-    for (const page of pages) {
-
-      const url =
-        page.url();
-
-      if (
-        url.includes(
-          "app.gohighlevel.com/v2/location/"
-        ) ||
-        url.includes(
-          "app.gohighlevel.com/location/"
-        )
-      ) {
-        return page;
-      }
-
-    }
-
-    // Final fallback: any HighLevel tab.
-    for (const page of pages) {
-
-      if (
-        page.url().includes(
-          "app.gohighlevel.com"
-        )
-      ) {
-        return page;
-      }
-
-    }
-
-    return null;
-
-  }
-
-
-  async saveAuth() {
-
+  async inspectCurrentHighLevel() {
     const browser =
-      await this.reconnectLoginBrowser();
+      await this.connectToLoginBrowser();
 
     if (!browser) {
-
-      return json(
-        {
-          status:
-            "browser-unavailable",
-
-          message:
-            "The login browser could not be reached. Make sure the Browser Run session is still alive."
-        },
-        409
-      );
-
+      return json({
+        status: "browser-unavailable",
+        message:
+          "The stored Browser Run session cannot currently be reached. If Live View is attached, close only the Live View tab and try again."
+      }, 409);
     }
 
-    const page =
-      await this.findHighLevelPage(
-        browser
-      );
+    const pages = await browser.pages();
 
-    if (!page) {
+    const pageResults = [];
 
-      return json(
-        {
-          status:
-            "no-highlevel-page"
-        },
-        409
-      );
+    for (let index = 0; index < pages.length; index++) {
+      const page = pages[index];
 
-    }
+      let details;
 
-    const authCheck =
-      await page.evaluate(() => {
-
-        const bodyText =
-          (document.body?.innerText || "")
-            .toLowerCase();
-
-        const hasDashboard =
-          bodyText.includes("dashboard") ||
-          bodyText.includes("opportunities") ||
-          bodyText.includes("conversations") ||
-          bodyText.includes("contacts");
-
-        const hasLoginForm =
-          Boolean(
-            document.querySelector(
-              'input[type="password"]'
-            )
-          ) ||
-          (
-            bodyText.includes("sign in") &&
-            Boolean(
-              document.querySelector(
-                'button[type="submit"]'
-              )
-            )
-          );
-
-        return {
-          title:
-            document.title,
-
-          url:
-            window.location.href,
-
-          authenticated:
-            Boolean(
-              hasDashboard &&
-              !hasLoginForm
-            )
-        };
-
-      });
-
-    if (!authCheck.authenticated) {
-
-      return json(
-        {
-          status:
-            "not-authenticated",
-
-          pageUrl:
-            authCheck.url,
-
-          pageTitle:
-            authCheck.title,
-
-          message:
-            "HighLevel does not appear to be logged in."
-        },
-        409
-      );
-
-    }
-
-    const cookies =
-      await page.cookies();
-
-    const storageData =
-      await page.evaluate(() => {
-
-        const local = {};
-
-        for (
-          let i = 0;
-          i < localStorage.length;
-          i++
-        ) {
-
-          const key =
-            localStorage.key(i);
-
-          local[key] =
-            localStorage.getItem(key);
-
-        }
-
-        return local;
-
-      });
-
-    await this.storage.put(
-      "ghlCookies",
-      cookies
-    );
-
-    await this.storage.put(
-      "ghlLocalStorage",
-      storageData
-    );
-
-    await this.storage.put(
-      "authSavedAt",
-      new Date().toISOString()
-    );
-
-    try {
-      await browser.close();
-    } catch {}
-
-    this.browser = null;
-
-    await this.storage.delete(
-      "loginSessionId"
-    );
-
-    return json({
-      status:
-        "auth-saved",
-
-      cookieCount:
-        cookies.length,
-
-      localStorageKeys:
-        Object.keys(
-          storageData
-        ).length,
-
-      pageTitle:
-        authCheck.title,
-
-      pageUrl:
-        authCheck.url,
-
-      message:
-        "Authentication saved. The login browser has been closed."
-    });
-
-  }
-
-
-  async inspect() {
-
-    const cookies =
-      await this.storage.get(
-        "ghlCookies"
-      );
-
-    const localStorageData =
-      await this.storage.get(
-        "ghlLocalStorage"
-      );
-
-    if (!cookies) {
-
-      return json(
-        {
-          status:
-            "no-saved-auth",
-
-          message:
-            "Start Login Browser, log into HighLevel, then Save Authentication."
-        },
-        409
-      );
-
-    }
-
-    let browser;
-
-    try {
-
-      browser =
-        await this.launchBrowser();
-
-      const page =
-        await browser.newPage();
-
-      if (
-        Array.isArray(cookies) &&
-        cookies.length
-      ) {
-
-        await page.setCookie(
-          ...cookies
-        );
-
-      }
-
-      await page.goto(
-        GHL_URL,
-        {
-          waitUntil:
-            "domcontentloaded",
-
-          timeout:
-            30000
-        }
-      );
-
-      if (
-        localStorageData &&
-        typeof localStorageData ===
-          "object"
-      ) {
-
-        await page.evaluate(
-          (saved) => {
-
-            for (
-              const [key, value]
-              of Object.entries(saved)
-            ) {
-
-              localStorage.setItem(
-                key,
-                value
-              );
-
-            }
-
-          },
-          localStorageData
-        );
-
-        await page.reload({
-          waitUntil:
-            "domcontentloaded",
-
-          timeout:
-            30000
-        });
-
-      }
-
-      await new Promise(
-        resolve =>
-          setTimeout(
-            resolve,
-            3000
-          )
-      );
-
-      const authCheck =
-        await page.evaluate(() => {
+      try {
+        details = await page.evaluate(() => {
+          const clean = (value) =>
+            String(value || "")
+              .replace(/\\s+/g, " ")
+              .trim();
 
           const bodyText =
-            (document.body?.innerText || "")
-              .toLowerCase();
+            clean(document.body?.innerText || "");
 
-          const hasDashboard =
-            bodyText.includes("dashboard") ||
-            bodyText.includes("opportunities") ||
-            bodyText.includes("conversations") ||
-            bodyText.includes("contacts");
+          const bodyLower =
+            bodyText.toLowerCase();
 
-          const hasLoginForm =
+          const hasPasswordField =
             Boolean(
               document.querySelector(
                 'input[type="password"]'
               )
             );
 
-          return {
-            title:
-              document.title,
+          const authenticatedSignals = [
+            "dashboard",
+            "conversations",
+            "contacts",
+            "opportunities",
+            "calendars",
+            "marketing",
+            "automation",
+            "sites"
+          ];
 
-            url:
-              window.location.href,
+          const authenticatedSignalCount =
+            authenticatedSignals.filter(
+              signal =>
+                bodyLower.includes(signal)
+            ).length;
+
+          const navigation =
+            Array.from(
+              document.querySelectorAll(
+                'a, button, [role="button"], [role="link"]'
+              )
+            )
+            .map((element) => ({
+              tag:
+                element.tagName.toLowerCase(),
+
+              text:
+                clean(
+                  element.innerText ||
+                  element.textContent ||
+                  element.getAttribute("aria-label")
+                ),
+
+              href:
+                element.tagName === "A"
+                  ? element.href
+                  : "",
+
+              ariaLabel:
+                clean(
+                  element.getAttribute("aria-label")
+                )
+            }))
+            .filter(item =>
+              item.text ||
+              item.href ||
+              item.ariaLabel
+            );
+
+          const relevantNavigation =
+            navigation.filter(item => {
+              const searchText = (
+                item.text +
+                " " +
+                item.href +
+                " " +
+                item.ariaLabel
+              ).toLowerCase();
+
+              return [
+                "site",
+                "website",
+                "funnel",
+                "page",
+                "domain"
+              ].some(term =>
+                searchText.includes(term)
+              );
+            });
+
+          return {
+            title: document.title,
+            url: window.location.href,
 
             authenticated:
-              Boolean(
-                hasDashboard &&
-                !hasLoginForm
-              )
-          };
+              authenticatedSignalCount >= 2 &&
+              !hasPasswordField,
 
+            authenticatedSignalCount,
+
+            bodyPreview:
+              bodyText.slice(0, 1000),
+
+            relevantNavigation:
+              relevantNavigation.slice(0, 100)
+          };
         });
 
-      return json({
-
-        status:
-          authCheck.authenticated
-            ? "authentication-success"
-            : "authentication-expired",
-
-        authenticated:
-          authCheck.authenticated,
-
-        highLevel: {
-          title:
-            authCheck.title,
-
-          url:
-            authCheck.url
-        }
-
-      });
-
-    } finally {
-
-      if (browser) {
-
-        try {
-          await browser.close();
-        } catch {}
-
+      } catch (error) {
+        details = {
+          title: "",
+          url: page.url(),
+          authenticated: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error)
+        };
       }
 
+      pageResults.push({
+        index,
+        ...details
+      });
     }
 
+    /*
+     * Prefer whichever open tab actually contains the authenticated
+     * HighLevel interface.
+     */
+    const authenticatedPage =
+      pageResults.find(
+        page => page.authenticated
+      );
+
+    if (!authenticatedPage) {
+      return json({
+        status: "not-authenticated",
+        sessionId:
+          await this.storage.get(
+            "loginSessionId"
+          ),
+        pages: pageResults,
+        message:
+          "The Browser Run session is reachable, but no open tab currently looks like the logged-in HighLevel dashboard."
+      }, 409);
+    }
+
+    return json({
+      status: "inspection-success",
+      authenticated: true,
+
+      sessionId:
+        await this.storage.get(
+          "loginSessionId"
+        ),
+
+      highLevel:
+        authenticatedPage,
+
+      pages:
+        pageResults
+    });
   }
 
 
   async status() {
-
-    const authSavedAt =
-      await this.storage.get(
-        "authSavedAt"
-      );
-
-    const loginSessionId =
+    const sessionId =
       await this.storage.get(
         "loginSessionId"
       );
 
+    let reachable = false;
+
+    if (this.browser && this.browser.isConnected()) {
+      reachable = true;
+    } else if (sessionId) {
+      try {
+        this.browser = await puppeteer.connect(
+          this.env.BROWSER,
+          sessionId
+        );
+
+        reachable =
+          Boolean(
+            this.browser &&
+            this.browser.isConnected()
+          );
+      } catch {
+        reachable = false;
+      }
+    }
+
     return json({
-
-      status:
-        "ok",
-
-      savedAuthentication:
-        Boolean(
-          authSavedAt
-        ),
-
-      authSavedAt:
-        authSavedAt || null,
-
-      loginBrowserActive:
-        Boolean(
-          loginSessionId
-        )
-
+      status: "ok",
+      sessionId:
+        sessionId || null,
+      browserReachable:
+        reachable
     });
-
   }
 
 
   async fetch(request) {
-
-    const url =
-      new URL(request.url);
+    const url = new URL(request.url);
 
     try {
-
-      switch (
-        url.pathname
-      ) {
-
+      switch (url.pathname) {
         case "/api/login/start":
+          return await this.startLoginBrowser();
 
-          return await this.startLogin();
-
-
-        case "/api/auth/save":
-
-          return await this.saveAuth();
-
-
-        case "/api/inspect":
-
-          return await this.inspect();
-
+        case "/api/inspect-current":
+          return await this.inspectCurrentHighLevel();
 
         case "/api/status":
-
           return await this.status();
 
-
         default:
-
-          return json(
-            {
-              error:
-                "Unknown action"
-            },
-            404
-          );
-
+          return json({
+            error: "Unknown action"
+          }, 404);
       }
 
     } catch (error) {
-
-      return json(
-        {
-          status:
-            "error",
-
-          message:
-            error instanceof Error
-              ? error.message
-              : String(error)
-        },
-        500
-      );
-
+      return json({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error)
+      }, 500);
     }
-
   }
-
 }
