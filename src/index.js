@@ -2,10 +2,10 @@ import puppeteer from "@cloudflare/puppeteer";
 
 export default {
   async fetch(request, env) {
-    let browser;
-
     try {
-      browser = await puppeteer.launch(env.BROWSER);
+      const browser = await puppeteer.launch(env.BROWSER, {
+        keep_alive: 600000
+      });
 
       const page = await browser.newPage();
 
@@ -14,15 +14,12 @@ export default {
         timeout: 30000
       });
 
-      const result = {
-        status: "success",
-        title: await page.title(),
+      return Response.json({
+        status: "session-created",
         url: page.url(),
-        hasEmailSecret: Boolean(env.GHL_EMAIL),
-        hasPasswordSecret: Boolean(env.GHL_PASSWORD)
-      };
-
-      return Response.json(result);
+        title: await page.title(),
+        message: "Browser session is running. Open Cloudflare Browser Run Live View to complete login."
+      });
 
     } catch (error) {
       return Response.json(
@@ -32,13 +29,6 @@ export default {
         },
         { status: 500 }
       );
-
-    } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch {}
-      }
     }
   }
 };
