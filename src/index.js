@@ -147,6 +147,32 @@ function controlPage() {
     Edit Text
   </button>
 
+</section>
+
+<section>
+  <h3>Builder Design Controls</h3>
+
+  <button onclick="run('/api/builder/layout-inspect')">
+    Inspect Layout / Styles
+  </button>
+
+  <label>CSS selector</label>
+  <textarea id="styleSelector" placeholder="#headline-abc123"></textarea>
+
+  <label>Expected current text (optional)</label>
+  <textarea id="styleExpectedText"></textarea>
+
+  <label>Styles JSON</label>
+  <textarea id="styleJson" rows="10" placeholder='{"color":"#FFFFFF","backgroundColor":"#07111C","fontSize":"64px","fontWeight":"700","lineHeight":"1.05","paddingTop":"24px","paddingBottom":"24px","borderRadius":"12px"}'></textarea>
+
+  <button onclick="applyBuilderStyles()">Apply Styles</button>
+
+  <button onclick="runWithBody('/api/builder/element-html', {
+    selector: document.getElementById('styleSelector').value
+  })">
+    Inspect Selected Element
+  </button>
+
   <button onclick="run('/api/builder/save')">
     Save Builder
   </button>
@@ -196,6 +222,22 @@ async function runWithBody(path, body) {
   } catch (error) {
     result.textContent = String(error);
   }
+}
+
+async function applyBuilderStyles() {
+  const result = document.getElementById("result");
+  let styles = {};
+  try {
+    styles = JSON.parse(document.getElementById("styleJson").value || "{}");
+  } catch (error) {
+    result.textContent = "Styles JSON is invalid: " + error.message;
+    return;
+  }
+  return runWithBody('/api/builder/style', {
+    selector: document.getElementById('styleSelector').value,
+    expectedText: document.getElementById('styleExpectedText').value,
+    styles
+  });
 }
 </script>
 
@@ -1573,6 +1615,141 @@ export class BrowserManager extends DurableObject {
   }
 
 
+  async inspectBuilderLayout() {
+    try {
+      const { page, frame } = await this.getBuilderContext();
+      const result = await frame.evaluate(() => {
+        const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+        const visible = el => {
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+        };
+        const selectorFor = el => {
+          if (el.id) return `#${CSS.escape(el.id)}`;
+          const dataId = el.getAttribute("data-id") || el.getAttribute("data-element-id") || el.getAttribute("data-section-id");
+          if (dataId) {
+            const attr = el.hasAttribute("data-id") ? "data-id" : el.hasAttribute("data-element-id") ? "data-element-id" : "data-section-id";
+            return `[${attr}="${CSS.escape(dataId)}"]`;
+          }
+          const classes = Array.from(el.classList || []).filter(Boolean).slice(0, 3);
+          return el.tagName.toLowerCase() + classes.map(c => `.${CSS.escape(c)}`).join("");
+        };
+        const nodes = Array.from(document.querySelectorAll(
+          "section,.section,[class*='section'],.row,[class*='row'],.col,[class*='col'],.element,[class*='element'],h1,h2,h3,h4,p,button,a,img"
+        )).filter(visible).slice(0, 800).map((el, index) => {
+          const r = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return {
+            index, selector: selectorFor(el), tag: el.tagName.toLowerCase(), id: el.id || "",
+            text: clean(el.innerText || el.textContent).slice(0, 220),
+            classes: Array.from(el.classList || []).slice(0, 12),
+            rect: {x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height)},
+            style: {
+              color:s.color, backgroundColor:s.backgroundColor, fontFamily:s.fontFamily, fontSize:s.fontSize,
+              fontWeight:s.fontWeight, lineHeight:s.lineHeight, letterSpacing:s.letterSpacing, textAlign:s.textAlign,
+              padding:s.padding, margin:s.margin, borderRadius:s.borderRadius, width:s.width, maxWidth:s.maxWidth, display:s.display
+            }
+          };
+        });
+        return {viewport:{width:window.innerWidth,height:window.innerHeight}, count:nodes.length, nodes};
+      });
+      return json({status:"builder-layout-inspection-success",verified:true,readOnly:true,builderUrl:page.url(),frameUrl:frame.url(),...result});
+    } catch (error) {
+      return json({status:"builder-layout-inspection-failed",message:error.message},409);
+    }
+  }
+
+  async inspectBuilderElement(request) {
+    const args = await this.body(request);
+    const selector = String(args.selector || "").trim();
+    if (!selector) return json({status:"error",message:"selector is required."},400);
+    try {
+      const { page, frame } = await this.getBuilderContext();
+      const result = await frame.evaluate(selector => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return {
+          tag:el.tagName.toLowerCase(), id:el.id || "",
+          text:String(el.innerText || el.textContent || "").replace(/\s+/g," ").trim().slice(0,1000),
+          classes:Array.from(el.classList || []), outerHTML:el.outerHTML.slice(0,12000),
+          rect:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)},
+          computedStyle:{
+            color:s.color,backgroundColor:s.backgroundColor,fontFamily:s.fontFamily,fontSize:s.fontSize,fontWeight:s.fontWeight,
+            lineHeight:s.lineHeight,letterSpacing:s.letterSpacing,textAlign:s.textAlign,padding:s.padding,margin:s.margin,
+            border:s.border,borderRadius:s.borderRadius,width:s.width,maxWidth:s.maxWidth,minHeight:s.minHeight,display:s.display,
+            justifyContent:s.justifyContent,alignItems:s.alignItems
+          }
+        };
+      }, selector);
+      if (!result) return json({status:"builder-element-not-found",selector},404);
+      return json({status:"builder-element-inspection-success",verified:true,readOnly:true,builderUrl:page.url(),frameUrl:frame.url(),selector,result});
+    } catch (error) {
+      return json({status:"builder-element-inspection-failed",message:error.message},409);
+    }
+  }
+
+  async styleBuilderElement(request) {
+    const args = await this.body(request);
+    const selector = String(args.selector || "").trim();
+    const expectedText = String(args.expectedText || "").trim();
+    const styles = args.styles && typeof args.styles === "object" && !Array.isArray(args.styles) ? args.styles : {};
+    if (!selector) return json({status:"error",message:"selector is required."},400);
+    if (!Object.keys(styles).length) return json({status:"error",message:"styles must contain at least one CSS property."},400);
+
+    const allowed = new Set([
+      "color","backgroundColor","fontFamily","fontSize","fontWeight","lineHeight","letterSpacing","textAlign","textTransform","opacity",
+      "padding","paddingTop","paddingRight","paddingBottom","paddingLeft","margin","marginTop","marginRight","marginBottom","marginLeft",
+      "border","borderWidth","borderStyle","borderColor","borderRadius","width","maxWidth","minWidth","height","minHeight","maxHeight",
+      "display","flexDirection","justifyContent","alignItems","gap","overflow","objectFit","objectPosition","boxShadow"
+    ]);
+    const invalid = Object.keys(styles).filter(k => !allowed.has(k));
+    if (invalid.length) return json({status:"builder-style-property-not-allowed",invalid,allowed:Array.from(allowed)},400);
+
+    const { frame } = await this.getBuilderContext();
+    const before = await frame.evaluate(({selector,expectedText}) => {
+      const el = document.querySelector(selector);
+      if (!el) return {found:false};
+      const clean = v => String(v || "").replace(/\s+/g," ").trim();
+      const text = clean(el.innerText || el.textContent || "");
+      return {found:true,text,expectedMatches:!expectedText || text === clean(expectedText)};
+    }, {selector,expectedText});
+
+    if (!before.found) return json({status:"builder-style-target-not-found",selector},404);
+    if (!before.expectedMatches) return json({
+      status:"builder-style-safety-check-failed",message:"Current text does not match expectedText; no style change was made.",
+      selector,expectedText:this.clean(expectedText),actualText:before.text
+    },409);
+
+    const result = await frame.evaluate(({selector,styles}) => {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const before = {};
+      for (const key of Object.keys(styles)) before[key] = getComputedStyle(el)[key] || el.style[key] || "";
+      for (const [key,value] of Object.entries(styles)) el.style[key] = String(value);
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+      const after = {};
+      for (const key of Object.keys(styles)) after[key] = getComputedStyle(el)[key] || el.style[key] || "";
+      return {before,requested:styles,after,inlineStyle:el.getAttribute("style") || ""};
+    }, {selector,styles});
+
+    if (!result) return json({status:"builder-style-target-not-found",selector},404);
+    const verification = Object.entries(styles).map(([property,requested]) => ({
+      property,requested:String(requested),actual:String(result.after[property] || "")
+    }));
+    if (verification.some(v => !v.actual)) return json({status:"builder-style-not-verified",selector,verification,result},409);
+
+    await this.storage.put("builderHasUnsavedChanges",true);
+    return json({
+      status:"builder-style-applied",verified:true,saved:false,published:false,selector,verification,result,
+      warning:"Verified in the current builder DOM. Use Save Builder to test whether HighLevel persists the style before publishing."
+    });
+  }
+
+
   async builderLastSavedText(
     frame
   ) {
@@ -1994,6 +2171,19 @@ export class BrowserManager extends DurableObject {
             request
           );
 
+        case "/api/builder/layout-inspect":
+          return await this.inspectBuilderLayout();
+
+        case "/api/builder/element-html":
+          return await this.inspectBuilderElement(
+            request
+          );
+
+        case "/api/builder/style":
+          return await this.styleBuilderElement(
+            request
+          );
+
         case "/api/builder/save":
           return await this.saveBuilder();
 
@@ -2016,6 +2206,3 @@ export class BrowserManager extends DurableObject {
             ? error.message
             : String(error)
       }, 500);
-    }
-  }
-}
