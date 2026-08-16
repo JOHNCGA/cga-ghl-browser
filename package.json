@@ -1,0 +1,11 @@
+{
+  "name": "cga-ghl-browser",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@cloudflare/puppeteer": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  }
+}
