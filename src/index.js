@@ -2206,3 +2206,6 @@ export class BrowserManager extends DurableObject {
             ? error.message
             : String(error)
       }, 500);
+    }
+  }
+}
